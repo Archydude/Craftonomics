@@ -42,7 +42,7 @@ ns.Layout = {
 	PAD_SIDE = 12,                     -- panel edge to the text
 	GAP = 6,                           -- extra space that sets a row apart
 	DIVIDER_GAP = 3,                   -- space above and below a divider line
-	GEAR_SPACE = 22,                   -- room kept for the options button on the first row
+	GEAR_SPACE = 40,                   -- room kept for the options and close buttons on the first row
 	ICON_SIZE = 18,                    -- item, currency and quality icons in the text
 	DEFAULT_POS = { x = 36, y = -60 }, -- from the profession window's top-right corner
 	BORDER = { 0.66, 0.55, 0.32, 1 },  -- the panel's border: bronze

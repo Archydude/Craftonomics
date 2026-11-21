@@ -2,10 +2,14 @@
 ArchdudeWhatsNew:Register("Craftonomics", {
 	title = "Craftonomics",
 	icon = "Interface\\Icons\\INV_Hammer_20",
-	version = "5.9.0",
+	version = "5.9.1",
 	seen = "CraftonomicsWhatsNew",
 	saved = { "CraftonomicsDB", "CraftonomicsCharDB" },
 	changes = {
+		{ "5.9.1",
+			"|cffffd100Close button on the panel:|r an |cffffd100X|r in the panel's top right corner closes it. The Craftonomics button at the top of the profession window opens it again.",
+			"The |cffffd100Open with the profession window|r tick box is back at the bottom of the panel.",
+		},
 		{ "5.9.0",
 			"|cffffd100Freshest prices:|r a new choice under |cffffd100Price addon|r in the options. It prices with whichever is newest: TSM (its desktop app's last download), Auctionator's last scan, or Craftonomics' last full scan. An item the newest one didn't see takes the next newest's price. With TSM loaded it only applies where the TSM price type is |cffffd100Lowest auction right now|r, for materials, crafted items or both, since that's the price a scan gives too; with any other TSM price type, prices come as with Automatic. The footers of the panel and the Best crafts list say which one is in use and how old it is.",
 			"With Freshest prices, Craftonomics' scan starts by itself when you open the auction house, at most once an hour, unless Auctionator does the pricing there. A scan made with TSM in the game doesn't count as a newer TSM price.",
@@ -54,11 +58,6 @@ ArchdudeWhatsNew:Register("Craftonomics", {
 		},
 		{ "5.2.1",
 			"Changed: the |cffffd100TSM Lowest vs Market|r line on item tooltips now says |cffffd100Cheap|r or |cffffd100Expensive|r instead of Buy or Sell, like |cffffd100Cheap -18%|r or |cffffd100Expensive +12%|r.",
-		},
-		{ "5.2.0",
-			"|cffffd100Lowest vs market on item tooltips:|r with TSM, a |cffffd100TSM Lowest vs Market|r line shows how far the item's lowest auction is from its market value, with a hint: |cffffd100Buy -18%|r in green when it's 3% or more below, |cffffd100Sell +12%|r in light blue when it's 3% or more above, and |cffffd100Even|r in between. It shows while someone has an auction up. Turn it off with |cffffd100Show lowest vs market|r on the Tooltips options page.",
-			"|cffffd100Whole stack on Shift:|r for a stack in your bags, item tooltips now show the amounts for one. Hold |cffffd100Shift|r to see what the whole stack sells for at a vendor and on the auction house, and its AH deposit.",
-			"Fixed: on WoW Forever, the sale rate's description said it's your own server's market. TSM's sale rate counts every ruleset of your region together (Normal, PvP...), and the Tooltips options and the Best crafts column now say so.",
 		},
 	},
 })

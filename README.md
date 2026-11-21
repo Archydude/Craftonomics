@@ -55,7 +55,7 @@ The panel reads top to bottom: the expected profit or loss, what comes in (the s
 - For recipes that make a varying amount, the average is used.
 - Materials without any price are shown in red. Profit is then too high, so take it with a grain of salt.
 - Drag the panel to move it. It remembers where you put it.
-- The **Craftonomics** button at the top of the profession window opens and closes the panel. Use the panel’s gear to change **Open with the profession window**.
+- A **Craftonomics** button at the top of the profession window opens and closes the panel, and the **X** in the panel's corner closes it. The panel's last line, **Open with the profession window**, says whether it opens by itself: untick it and the panel stays closed until you click that button.
 
 ### More than one craft
 On the crafting page, the **Crafts** box over the profit sets how many crafts the panel is for. Type a number, up to 999, and the panel follows it:
@@ -414,7 +414,7 @@ Click the gear on the panel (or Craftonomics options in the gear menu under the 
 | Show on the crafting page / on crafting orders | Turn the panel on or off for each page. WoW Forever has no crafting orders. |
 | Panel size | Size of the whole panel, 60% to 150%. |
 | Show amounts down to | Gold, silver (default) or copper. Not on WoW Forever, which always shows the two biggest coins. |
-| Open with the profession window | Opens the panel when you pick a recipe. Turn it off to open the panel manually with the **Craftonomics** button at the top of the profession window. On by default. |
+| Open with the profession window | The panel opens by itself when you pick a recipe. Off: it stays closed until you click the **Craftonomics** button at the top of the profession window, which opens and closes the panel either way. Also at the bottom of the panel. On by default. |
 | Show disenchant value | On by default. For a recipe that makes a weapon or armor, the panel shows what disenchanting it gives on average, what that leaves after the materials, and a **Disenchant advantage** line when that's more than selling it makes. Needs TSM or Auctionator. |
 | Lock panel position | Stops the panel from being dragged. |
 | Panel position: Reset | Puts the panel back next to the profession window. |

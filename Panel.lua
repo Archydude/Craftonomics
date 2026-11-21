@@ -452,6 +452,17 @@ local function addCheckRow(key, label, tooltip)
 	checksUsed[key] = true
 end
 
+-- The panel's last line: whether it opens by itself with the profession window
+-- (the "Open with the profession window" option).
+local function addAutoRow()
+	addCheckRow("panelAuto", Color("muted", "Open with the profession window"), function(tip)
+		tip:SetText("Open with the profession window")
+		tip:AddLine("The panel opens by itself when you pick a recipe.", 1, 1, 1, true)
+		tip:AddLine("Off: it stays closed until you click the Craftonomics button at the top of the "
+			.. "profession window. That button opens and closes the panel either way.", 0.53, 0.53, 0.53, true)
+	end)
+end
+
 -- Whether materials a vendor sells are bought on the auction house (the "Buy
 -- vendor items on the auction house" option), under the crafting strategy.
 local function addVendorRow()
@@ -1134,6 +1145,7 @@ local function drawFooter(model)
 			session.crafts, session.crafts == 1 and "" or "s", luck and (dot .. luck) or ""),
 			INFO_ICON, nil, ns.Results.ConfirmResetSession, footerTooltip(true, sessionNotes))
 	end
+	addAutoRow()
 	local band = addBand(top, contentHeight + Layout.PAD_BOTTOM - EDGE - top, EDGE)
 	gradient(band, "HORIZONTAL", { 0, 0, 0 }, 0.35, { 0, 0, 0 }, 0.35)
 end
@@ -1673,6 +1685,11 @@ function Panel.Place()
 	frame:SetPoint("TOPLEFT", ProfessionsFrame, "TOPRIGHT", pos.x, pos.y)
 end
 
+-- The panel's close button, and the room it takes left of the corner: the
+-- options button sits that much further in (see Layout.GEAR_SPACE, which has
+-- room for both).
+local CLOSE_SIZE, CLOSE_SPACE = 22, 18
+
 -- The Craftonomics button on the profession window's title bar, left of where
 -- the window's own buttons and other addons' sit: it opens and closes the panel.
 local TOGGLE_WIDTH, TOGGLE_HEIGHT = 92, 20
@@ -1742,9 +1759,26 @@ local function createFrame()
 		Panel.Place()
 	end)
 
+	-- In the corner: closes the panel, as the Craftonomics button on the profession
+	-- window does (which opens it again).
+	local close = CreateFrame("Button", nil, frame, "UIPanelCloseButton")
+	close:SetSize(CLOSE_SIZE, CLOSE_SIZE)
+	close:SetPoint("TOPRIGHT", -3, -4)
+	close:SetScript("OnClick", function()
+		if open then Panel.Toggle() end
+	end)
+	close:SetScript("OnEnter", function(self)
+		GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+		GameTooltip:SetText("Close")
+		GameTooltip:AddLine("The Craftonomics button at the top of the profession window opens the panel again.",
+			1, 1, 1, true)
+		GameTooltip:Show()
+	end)
+	close:SetScript("OnLeave", GameTooltip_Hide)
+
 	local gear = CreateFrame("Button", nil, frame)
 	gear:SetSize(16, 16)
-	gear:SetPoint("TOPRIGHT", -8, -8)
+	gear:SetPoint("TOPRIGHT", -(8 + CLOSE_SPACE), -8)
 	gear:SetNormalTexture("Interface\\Buttons\\UI-OptionsButton")
 	gear:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight", "ADD")
 	gear:SetScript("OnClick", ns.Options.Open)

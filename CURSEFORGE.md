@@ -74,18 +74,22 @@ This addon was made with AI.
 ## B. Upload File form
 
 **Files:** two, each uploaded with only its own game versions (why is in [UPLOADING.md](../UPLOADING.md)). The display name, release type and changelog are the same for both.
-- `dist\Craftonomics-5.9.0-retail.zip`: Retail `12.1.5`
-- `dist\Craftonomics-5.9.0-forever.zip`: WoW Forever `1.60.1`
+- `dist\Craftonomics-5.9.1-retail.zip`: Retail `12.1.5`
+- `dist\Craftonomics-5.9.1-forever.zip`: WoW Forever `1.60.1`
 
 **Display name**
 ```
-Craftonomics 5.9.0
+Craftonomics 5.9.1
 ```
 
 **Release type:** `Release`
 
 **Changelog** (paste only the newest part; paste older parts too if they never went up)
 ```markdown
+5.9.1
+- **Close button on the panel:** an **X** in the panel's top right corner closes it. The Craftonomics button at the top of the profession window opens it again.
+- The **Open with the profession window** tick box is back at the bottom of the panel.
+
 5.9.0
 - **Freshest prices:** a new choice under **Price addon** in the options. It prices with whichever is newest: TSM (its desktop app's last download), Auctionator's last scan, or Craftonomics' last full scan. An item the newest one didn't see takes the next newest's price. With TSM loaded it only applies where the TSM price type is **Lowest auction right now**, for materials, crafted items or both, since that's the price a scan gives too; with any other TSM price type, prices come as with Automatic. The footers of the panel and the Best crafts list say which one is in use and how old it is.
 - With Freshest prices, Craftonomics' scan starts by itself when you open the auction house, at most once an hour, unless Auctionator does the pricing there. A scan made with TSM in the game doesn't count as a newer TSM price.
