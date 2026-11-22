@@ -1,5 +1,10 @@
 # Changelog
 
+## 5.11.0
+- **Materials in your bank (WoW Forever):** crafting there only takes what's in your bags, so the panel's material rows now count your bags, like the game's own window. A material your bags are short of shows what your bank holds after its count, with a bank mark: in orange when bags and bank together are enough, and a line under the materials says to take them out of the bank. Hover a row for how many are in each. The shopping list still counts your bank, so nothing in it is bought again.
+- **A looked-up price counts everywhere:** picking an item on the Sell tab asks the auction house what it's listed for right now. When your prices come from Craftonomics' own scan or from **Freshest prices**, that lowest price is now the item's price everywhere: the Sell list's Price column, the panel, Best crafts and tooltips. The same goes for items My auctions checks, and stackable items the game's own window lists.
+- **Scan is in progress:** while Craftonomics' price scan runs, the auction house takes no new auctions or cancels. The Sell and My auctions tabs now say so, with a **Stop scan** button beside the notice that ends the scan and keeps the prices it read.
+
 ## 5.10.0
 - **Return:** on the panel, under a craft's profit or loss: the profit as a share of what the materials cost, like **+25%** in green (every 100 gold of materials makes 25 gold) or **-5%** in red. A low return leaves little room: a small change in prices turns the craft into a loss. Not on crafting orders.
 - **Return column in Best crafts:** the same number for every recipe. Click its header to sort by it; it's in each row's tooltip too. It shows by default on WoW Forever; on Retail, right-click a header to pick it.

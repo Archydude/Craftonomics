@@ -19,10 +19,32 @@ local LABEL_GAP = 2     -- checkbox to its label
 local HELP_TEXT = "A scan reads the lowest price of everything on the auction house, and how many are up.\n\n"
 	.. "Craftonomics prices your materials and crafts with it when neither TSM nor Auctionator does, or when "
 	.. "you pick it as the Price addon in the options.\n\n"
-	.. "A scan can take a few minutes on a busy auction house, and you can keep buying and selling while it "
-	.. "runs. What vendors sell is learned as you visit them."
+	.. "A scan can take a few minutes on a busy auction house. Until it's done, the auction house takes no "
+	.. "new auctions or cancels. What vendors sell is learned as you visit them."
 
 local panel, sourceText, lastText, scanButton, progressText, autoCheck
+
+-- The Stop scan button beside the Sell and My auctions tabs' scan notice: its
+-- width, and the gap between the notice and it.
+PricesTab.STOP_WIDTH, PricesTab.STOP_GAP = 88, 6
+
+-- Makes that button on `parent`, hidden: it ends the scan that's running.
+function PricesTab.StopButton(parent)
+	local button = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
+	button:SetText("Stop scan")
+	button:SetSize(PricesTab.STOP_WIDTH, 20)
+	button:SetScript("OnClick", function() ns.PriceScan.Stop() end)
+	button:SetScript("OnEnter", function(self)
+		GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+		GameTooltip:SetText("Stop scan")
+		GameTooltip:AddLine("Ends the price scan now. The prices it read so far are kept.", 1, 1, 1, true)
+		GameTooltip:AddLine("Scan now on the Prices tab starts it again.", 0.53, 0.53, 0.53, true)
+		GameTooltip:Show()
+	end)
+	button:SetScript("OnLeave", GameTooltip_Hide)
+	button:Hide()
+	return button
+end
 
 -- "just now", "12 minutes ago", "3 hours ago", "2 days ago".
 local function ago(seconds)

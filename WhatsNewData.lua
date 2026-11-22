@@ -2,10 +2,15 @@
 ArchdudeWhatsNew:Register("Craftonomics", {
 	title = "Craftonomics",
 	icon = "Interface\\Icons\\INV_Hammer_20",
-	version = "5.10.0",
+	version = "5.11.0",
 	seen = "CraftonomicsWhatsNew",
 	saved = { "CraftonomicsDB", "CraftonomicsCharDB" },
 	changes = {
+		{ "5.11.0",
+			"|cffffd100Materials in your bank (WoW Forever):|r crafting there only takes what's in your bags, so the panel's material rows now count your bags, like the game's own window. A material your bags are short of shows what your bank holds after its count, with a bank mark: in orange when bags and bank together are enough, and a line under the materials says to take them out of the bank. Hover a row for how many are in each. The shopping list still counts your bank, so nothing in it is bought again.",
+			"|cffffd100A looked-up price counts everywhere:|r picking an item on the Sell tab asks the auction house what it's listed for right now. When your prices come from Craftonomics' own scan or from |cffffd100Freshest prices|r, that lowest price is now the item's price everywhere: the Sell list's Price column, the panel, Best crafts and tooltips. The same goes for items My auctions checks, and stackable items the game's own window lists.",
+			"|cffffd100Scan is in progress:|r while Craftonomics' price scan runs, the auction house takes no new auctions or cancels. The Sell and My auctions tabs now say so, with a |cffffd100Stop scan|r button beside the notice that ends the scan and keeps the prices it read.",
+		},
 		{ "5.10.0",
 			"|cffffd100Return:|r on the panel, under a craft's profit or loss: the profit as a share of what the materials cost, like |cffffd100+25%|r in green (every 100 gold of materials makes 25 gold) or |cffffd100-5%|r in red. A low return leaves little room: a small change in prices turns the craft into a loss. Not on crafting orders.",
 			"|cffffd100Return column in Best crafts:|r the same number for every recipe. Click its header to sort by it; it's in each row's tooltip too. It shows by default on WoW Forever; on Retail, right-click a header to pick it.",
@@ -57,10 +62,6 @@ ArchdudeWhatsNew:Register("Craftonomics", {
 		{ "5.3.0",
 			"|cffffd100Heatmap in All recipes (with TSM):|r a new dropdown at the bottom right of the All recipes window shows the recipes as a heatmap instead of a list: |cffffd100Heatmap: crafted items|r or |cffffd100Heatmap: materials|r. Every item is a tile. Its color is TSM's trend: red when the item's market value is below its historical price, green when it's above. Its size is the gold of the item sold in a day. Crafted items are grouped by profession, materials by what kind of item they are.",
 			"Click a group to see only its items, and right-click or |cffffd100Back|r to return. Hover a tile for its trend, market value, historical price, sales and TSM sale rate. Items too small for a tile of their own share a |cffffd100more|r tile. The search, the profession and the filters apply to the heatmap too.",
-		},
-		{ "5.2.2",
-			"Fixed: after you pressed Shift over an item's tooltip, right-clicking an item in your bags to use it, like a recipe, could fail with the error \"AddOn 'Craftonomics' tried to call the protected function 'UNKNOWN()'\".",
-			"Changed: in the bank, a stack's tooltip no longer changes while you hover it. Hold |cffffd100Shift|r first, then hover the stack, to see the whole stack's amounts. In your bags it still changes as you press Shift.",
 		},
 	},
 })

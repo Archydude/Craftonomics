@@ -778,6 +778,17 @@ local function drawBack(model)
 	end)
 end
 
+-- A material in your bank, where crafting doesn't take it from there: the mark
+-- after its count, and under the materials.
+local BANK_ICON = "|TInterface\\Minimap\\Tracking\\Banker:14|t"
+
+-- How many of a material crafting can take right now, and how many more are in
+-- your bank where it can't take them from there (0 where it can).
+local function onHand(material)
+	if ns.Model.CRAFTS_FROM_BANK then return ns.Model.Owned(material.itemID), 0 end
+	return ns.Model.InBags(material.itemID)
+end
+
 -- `canCycle`: the material comes in qualities you can click through.
 local function materialTooltip(model, material, canCycle)
 	return function(tip)
@@ -797,6 +808,15 @@ local function materialTooltip(model, material, canCycle)
 			tip:AddLine(" ")
 			tip:AddLine(Color("missing", format("You're short of %d for %s.",
 				missing > 0 and missing or material.qty * count, craftsText())))
+		end
+		local bags, banked = onHand(material)
+		if banked > 0 then
+			tip:AddLine(" ")
+			tip:AddLine(format("%s %d in your bank, %d in your bags.", BANK_ICON, banked, bags), 1, 1, 1, true)
+			if bags < material.qty * count then
+				tip:AddLine("Crafting only takes what's in your bags: take them out of the bank first.",
+					0.53, 0.53, 0.53, true)
+			end
 		end
 		tip:AddLine(" ")
 		if canCycle then
@@ -911,6 +931,7 @@ local function drawMaterials(model)
 	-- Orders show their material cost here. Crafts show it beside the sale proceeds.
 	addHeading("Your materials", model.kind == "order" and Color(ns.AmountColor(-model.cost), Money(-model.cost)) or nil)
 	local shownCheaper = {}
+	local fetch = false -- whether a material has to come out of the bank first
 	for index, material in ipairs(model.materials) do
 		local cart = materialCart(model, material)
 		-- Short of it, with shopping turned off in the options: the word instead.
@@ -925,7 +946,16 @@ local function drawMaterials(model)
 		local onClick, tooltip
 		local canCycle = model.canSimulate and ns.Simulation.CanChange(material)
 		local canShop = ns.Shopping.ListTarget() and missingOf(model, material) > 0
-		if canCycle or canShop or crafted then
+		-- In front, how many you have of how many the crafts shown take ("2/5"), as
+		-- the crafting window has it: green when that's enough, and red, on a row
+		-- tinted red, when you're short. Where crafting doesn't take from your bank,
+		-- that's what's in your bags, and when they're short, what the bank holds
+		-- follows it with the bank's mark, in orange when the two together are enough.
+		local need, owned = material.qty * count, ns.Model.Owned(material.itemID)
+		local have, banked = onHand(material)
+		local inBank = have < need and banked > 0
+		fetch = fetch or inBank
+		if canCycle or canShop or crafted or inBank then
 			onClick = function(mouseButton)
 				if IsShiftKeyDown() then
 					if canShop then shopMaterial(model, material) end
@@ -939,13 +969,10 @@ local function drawMaterials(model)
 		end
 		local amount = material.price and Money(material.price * material.qty * count) or Color("warning", "no price")
 		local top = contentHeight
-		-- In front, how many you have of how many the crafts shown take ("2/5"), as
-		-- the crafting window has it: green when that's enough, and red, on a row
-		-- tinted red, when you're short.
-		local need, have = material.qty * count, ns.Model.Owned(material.itemID)
-		local short = have < need
-		local name = Item(material.itemID, need):gsub("^%d+x",
-			Color(short and "loss" or "good", format("%d/%d", have, need)), 1)
+		local short = owned < need
+		local countText = Color(short and "loss" or have < need and "missing" or "good", format("%d/%d", have, need))
+		if inBank then countText = countText .. " " .. BANK_ICON .. Color("missing", tostring(banked)) end
+		local name = Item(material.itemID, need):gsub("^%d+x", countText, 1)
 		addRow(name .. tag, amount, nil, onClick, tooltip, cart)
 		if short then
 			shortTint(top)
@@ -961,6 +988,9 @@ local function drawMaterials(model)
 			addRow(Color("simulated", format("   %s saves %s: click to use it", rank, Money(cheaper.saves))), nil, nil,
 				function() ns.Simulation.Pick(material.slotIndex, cheaper.itemID) end, cheaperTooltip(material, cheaper))
 		end
+	end
+	if fetch then
+		addRow(Color("missing", BANK_ICON .. " In your bank: take them out to craft."))
 	end
 	drawActions(model)
 end

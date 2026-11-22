@@ -84,6 +84,15 @@ end
 
 local pump
 
+-- An item's listings came back, cheapest first: Search.onListings, when set, is
+-- told what they are (see PriceScan.lua, which keeps the lowest as the item's
+-- price). `allLevels`: they're gear of every item level, not one.
+local function learned(itemKey, rows, allLevels)
+	if Search.onListings and rows[1] then
+		xpcall(Search.onListings, geterrorhandler(), itemKey, rows, allLevels == true)
+	end
+end
+
 -- The question at the front of the line is answered (results) or given up (nil).
 local function finish(job, results)
 	if active ~= job then return end
@@ -250,6 +259,7 @@ events:SetScript("OnEvent", function(_, event, arg)
 		-- Someone else asked about this stackable item (the game's own window does,
 		-- for the item on its sell page): the questions about it that are still
 		-- waiting their turn here are answered by the same listings.
+		learned({ itemID = arg }, readCommodity(arg))
 		for index = #queue, 1, -1 do
 			local job = queue[index]
 			if job.itemKey and not job.owned and not job.browse and job.itemKey.itemID == arg then
@@ -266,8 +276,14 @@ events:SetScript("OnEvent", function(_, event, arg)
 	elseif active.owned then
 		return
 	elseif event == "COMMODITY_SEARCH_RESULTS_UPDATED" then
-		if arg == active.itemKey.itemID then finish(active, { commodity = true, rows = readCommodity(arg) }) end
+		if arg == active.itemKey.itemID then
+			local rows = readCommodity(arg)
+			learned(active.itemKey, rows)
+			finish(active, { commodity = true, rows = rows })
+		end
 	elseif type(arg) == "table" and arg.itemID == active.itemKey.itemID then
-		finish(active, { commodity = false, rows = readItem(active.itemKey) })
+		local rows = readItem(active.itemKey)
+		learned(active.itemKey, rows, active.sell)
+		finish(active, { commodity = false, rows = rows })
 	end
 end)

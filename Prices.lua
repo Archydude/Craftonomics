@@ -123,6 +123,12 @@ end
 local function freshMaterial(itemID)
 	local list = freshFor(ns.db.matSource)
 	if not list then return end
+	-- Looked up by itself since the newest of them: nothing is fresher than that.
+	local checked = ns.PriceScan.MaterialChecked(itemID)
+	if checked and checked <= list[1].seconds then
+		local value = ns.PriceScan.Material(itemID)
+		if value then return value, "own" end
+	end
 	for _, source in ipairs(list) do
 		local value
 		if source.name == "tsm" then
@@ -142,6 +148,11 @@ end
 local function freshSale(link, itemID)
 	local list = freshFor(ns.db.saleSource)
 	if not list then return end
+	local checked = ns.PriceScan.SaleChecked(link, itemID)
+	if checked and checked <= list[1].seconds then
+		local value = ns.PriceScan.Sale(link, itemID)
+		if value then return value, "own" end
+	end
 	for _, source in ipairs(list) do
 		local value
 		if source.name == "tsm" then

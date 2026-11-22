@@ -43,18 +43,18 @@ Craftonomics, formerly **Craft Profit**, answers in gold: **profit or loss?** A 
 - **Patron orders**: profit, rewards and missing materials in Blizzard's Patron tab, crafted from there
 
 ### Crafts and orders
-The sale price at the rank you'll get, minus the 5% cut and your materials. On orders: the commission, minus the materials **you** supply, plus sellable rewards. With concentration on, the **concentration strategy** picks the materials: cheapest, least concentration or most **gold per point**. The **Crafts** box shows it for any number of crafts. A warning shows when the **AH deposit** is high on an item that sells poorly. Weapons and armor show their **disenchant value** and when disenchanting beats selling. Materials show what you **have**, and a **Craft** button crafts from the panel.
+The sale price at the rank you'll get, minus the 5% cut and your materials. On orders: the commission, minus the materials **you** supply, plus sellable rewards. With concentration on, the **concentration strategy** picks the materials: cheapest, least concentration or most **gold per point**. The **Crafts** box multiplies it. A warning shows when the **AH deposit** is high on an item that sells poorly. Weapons and armor show their **disenchant value** and when disenchanting beats selling. Materials show what you **have**, and a **Craft** button crafts from the panel.
 
 ### What should I craft?
 **Best crafts** has a **Return** column, and with TSM each item's **sale rate** and **trend**.
 
-**All recipes** lists every profession's sellable recipes and their profit. With TSM, switch it to a **heatmap**: tiles colored by trend and sized by gold sold per day.
+**All recipes** lists every profession's sellable recipes with profit. With TSM, switch it to a **heatmap**: tiles colored by trend, sized by gold sold per day.
 
 ### At the auction house
 **Shopping list**: click a material to see how many to buy. **Sell**: a price and sale rate on every bag item. **My auctions**: cancel the undercut ones.
 
 ### WoW Forever
-Best crafts shows what a **skill point** costs. **Craft myself** prices materials at what crafting them costs, and **Cheapest way** crafts or buys each, whichever is cheaper.
+Best crafts shows what a **skill point** costs. Materials in your **bank** are marked on the panel. **Craft myself** prices materials at what crafting them costs, and **Cheapest way** crafts or buys each, whichever is cheaper.
 
 ### Item tooltips
 Vendor and auction prices and the **AH deposit**, plus with TSM the **sale rate**, **trend** and whether the lowest auction is **cheap** or **expensive**. On a material: the **best craft** it leads to, chains of crafts included, with its profit and return.
@@ -74,18 +74,23 @@ This addon was made with AI.
 ## B. Upload File form
 
 **Files:** two, each uploaded with only its own game versions (why is in [UPLOADING.md](../UPLOADING.md)). The display name, release type and changelog are the same for both.
-- `dist\Craftonomics-5.10.0-retail.zip`: Retail `12.1.5`
-- `dist\Craftonomics-5.10.0-forever.zip`: WoW Forever `1.60.1`
+- `dist\Craftonomics-5.11.0-retail.zip`: Retail `12.1.5`
+- `dist\Craftonomics-5.11.0-forever.zip`: WoW Forever `1.60.1`
 
 **Display name**
 ```
-Craftonomics 5.10.0
+Craftonomics 5.11.0
 ```
 
 **Release type:** `Release`
 
 **Changelog** (paste only the newest part; paste older parts too if they never went up)
 ```markdown
+5.11.0
+- **Materials in your bank (WoW Forever):** crafting there only takes what's in your bags, so the panel's material rows now count your bags, like the game's own window. A material your bags are short of shows what your bank holds after its count, with a bank mark: in orange when bags and bank together are enough, and a line under the materials says to take them out of the bank. Hover a row for how many are in each. The shopping list still counts your bank, so nothing in it is bought again.
+- **A looked-up price counts everywhere:** picking an item on the Sell tab asks the auction house what it's listed for right now. When your prices come from Craftonomics' own scan or from **Freshest prices**, that lowest price is now the item's price everywhere: the Sell list's Price column, the panel, Best crafts and tooltips. The same goes for items My auctions checks, and stackable items the game's own window lists.
+- **Scan is in progress:** while Craftonomics' price scan runs, the auction house takes no new auctions or cancels. The Sell and My auctions tabs now say so, with a **Stop scan** button beside the notice that ends the scan and keeps the prices it read.
+
 5.10.0
 - **Return:** on the panel, under a craft's profit or loss: the profit as a share of what the materials cost, like **+25%** in green (every 100 gold of materials makes 25 gold) or **-5%** in red. A low return leaves little room: a small change in prices turns the craft into a loss. Not on crafting orders.
 - **Return column in Best crafts:** the same number for every recipe. Click its header to sort by it; it's in each row's tooltip too. It shows by default on WoW Forever; on Retail, right-click a header to pick it.

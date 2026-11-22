@@ -28,6 +28,9 @@ local OLD_DAYS = 21
 -- The scan that starts by itself waits this long after the auction house opens,
 -- for the window's own first search, and runs at most this often. In seconds.
 local AUTO_DELAY, AUTO_EVERY = 2, 3600
+-- Prices learned from looking one item up are shown this long after the last of
+-- a burst of them, in seconds: My auctions looks up many in a row.
+local CHECKED_WAIT = 0.5
 
 -- CraftonomicsDB.scanPrices[realm] = {
 --   time = when the last full scan ended, count = how many items it found,
@@ -46,6 +49,13 @@ local prices, counts, days -- key -> lowest price, how many are up, day last see
 local state
 -- What the last scan had to say, for the Prices tab.
 local lastMessage
+-- Items looked up one by one since you logged in (see learned): key -> when,
+-- as time() counts. Their prices are newer than the last full scan's. Not saved:
+-- after that they're as old as that scan.
+local checkedAt = {}
+-- Whether prices changed since they were last packed for saving, and whether
+-- showing them is on its way.
+local unsaved, redrawDue = false, false
 -- Who to tell when a scan starts, moves on or ends.
 local listeners = {}
 
@@ -148,6 +158,22 @@ function PriceScan.SaleInLastScan(link, itemID)
 	if not load() then return false end
 	local key = ns.SavedPrices.SaleKey(link, itemID)
 	return key ~= nil and (counts[key] or 0) > 0
+end
+
+local function checkedSeconds(key)
+	local at = key and checkedAt[key]
+	return at and math.max(time() - at, 0) or nil
+end
+
+-- How many seconds ago the auction house was asked about just this material,
+-- since you logged in, or nil when it wasn't: its price is that new.
+function PriceScan.MaterialChecked(itemID)
+	return checkedSeconds(tostring(itemID))
+end
+
+-- The same for a crafted item.
+function PriceScan.SaleChecked(link, itemID)
+	return checkedSeconds(ns.SavedPrices.SaleKey(link, itemID))
 end
 
 -- How many seconds ago the last full scan ended, or nil when there never was one.
@@ -274,6 +300,55 @@ local function finish(problem)
 	tell()
 end
 
+-- The auction house answered a question about one item (you picked it on the
+-- Sell tab, My auctions checked it, the game's own window listed it): `rows` are
+-- its listings, cheapest first. The lowest is the item's price from now on, as
+-- if a scan had just seen it, and everything that shows a price draws again.
+-- Gear has a price for each item level; its own ID only gets one when the
+-- listings were of every level (`allLevels`).
+local function learned(itemKey, rows, allLevels)
+	if not (itemKey and rows[1] and load()) then return end
+	local now, day, changed = time(), today(), false
+	local function set(key, price, listed)
+		if prices[key] ~= price then changed = true end
+		prices[key], days[key], checkedAt[key] = price, day, now
+		-- Only the cheapest listings were read, so a higher count from a scan stays.
+		counts[key] = math.max(counts[key] or 0, listed, 1)
+	end
+	local lowest, total, byLevel = nil, 0, {}
+	for _, row in ipairs(rows) do
+		local qty = row.qty or 1
+		total = total + qty
+		if not lowest or row.price < lowest then lowest = row.price end
+		local level = row.itemLevel or 0
+		if level > 0 then
+			local seen = byLevel[level]
+			if not seen then
+				seen = { price = row.price, listed = 0 }
+				byLevel[level] = seen
+			end
+			if row.price < seen.price then seen.price = row.price end
+			seen.listed = seen.listed + qty
+		end
+	end
+	if not (lowest and lowest > 0) then return end
+	if (itemKey.battlePetSpeciesID or 0) > 0 then
+		set("p" .. itemKey.battlePetSpeciesID, lowest, total)
+	else
+		for level, seen in pairs(byLevel) do set(itemKey.itemID .. "@" .. level, seen.price, seen.listed) end
+		if allLevels or next(byLevel) == nil then set(tostring(itemKey.itemID), lowest, total) end
+	end
+	unsaved = true
+	if not changed or redrawDue then return end
+	redrawDue = true
+	C_Timer.After(CHECKED_WAIT, function()
+		redrawDue = false
+		redraw()
+		if ns.Sell and ns.Sell.Redraw then ns.Sell.Redraw() end
+	end)
+end
+Search.onListings = learned
+
 local nextPage
 
 local function onPage(arrived)
@@ -393,6 +468,9 @@ events:SetScript("OnEvent", function(_, event)
 		readVendor()
 	elseif event == "AUCTION_HOUSE_CLOSED" then
 		if state then finish("The scan stopped when the auction house closed. The prices it read so far are kept.") end
+		-- The prices looked up one by one go into the save.
+		if unsaved and prices then pack() end
+		unsaved = false
 	else
 		C_Timer.After(AUTO_DELAY, function()
 			if Search.IsOpen() and not state and ns.db and autoDue() then PriceScan.Start(true) end

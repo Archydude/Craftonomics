@@ -62,7 +62,7 @@ The panel reads top to bottom: the expected profit or loss, what comes in (the s
 On the crafting page, the **Crafts** box over the profit sets how many crafts the panel is for. Type a number, up to 999, and the panel follows it:
 
 - **The profit** (expected and without procs), with **x10** after its name, the sale proceeds and the material cost.
-- **Your materials:** how many of each and what each costs. In front of each is how many you have of how many the crafts take, like **2/5**: green when that's enough, and red on a row tinted red when you're short.
+- **Your materials:** how many of each and what each costs. In front of each is how many you have of how many the crafts take, like **2/5**: green when that's enough, and red on a row tinted red when you're short. On WoW Forever, where crafting only takes what's in your bags, the count is your bags', and a material your bags are short of shows what your bank holds after it, with a bank mark, like **0/1** and **14**: in orange when bags and bank together are enough. A line under the materials then says to take them out of the bank.
 - **The Shopping list button**, the carts and what counts as missing: for that many crafts.
 - **Concentration:** what that many crafts take, with **not enough** when you have less.
 - **Use Craftonomics materials:** how much more they make over that many crafts.
@@ -310,6 +310,8 @@ What's on Craftonomics' own shopping lists: each list under its name, every mate
 ### Sell tab
 Everything in your bags that can be auctioned, with what one sells for and how many you have. The price is your price addon's (or Craftonomics' own scan's), and shows **-** when there's none. With TSM, a column between them shows TSM's sale rate: the share of the item's auctions that sell.
 
+Picking an item asks the auction house what it's listed for right now. When your prices come from Craftonomics' own scan or from **Freshest prices**, that lowest price becomes the item's price everywhere: this list, the panel, Best crafts and tooltips. So does the price of any item My auctions checks, or the game's own window lists.
+
 - **One list:** your favorites come first, marked with a star, then everything else.
 - **Sort:** click a column's name (Item, Price, Sale rate, Amount) to sort by it, and click again to reverse. Items with no price or no sale rate go last.
 - **Search:** type part of a name in the box above the list.
@@ -335,7 +337,7 @@ Opening the tab switches the game's window to its own Auctions tab.
 ### Prices tab
 Where your prices come from, when the auction house was last scanned and how many items the scan found.
 
-- **Scan now** reads the lowest price of everything on the auction house and how many are up. It can take a few minutes on a busy auction house, and you can keep buying and selling while it runs. **Stop** ends it early and keeps what it read.
+- **Scan now** reads the lowest price of everything on the auction house and how many are up. It can take a few minutes on a busy auction house. Until it's done the auction house takes no new auctions or cancels, and the Sell and My auctions tabs say **Scan is in progress**, with a **Stop scan** button beside it. **Stop** ends it early and keeps what it read.
 - Craftonomics prices your materials and crafts with its scan when neither TSM nor Auctionator does, for items those two have no price for, or always when you pick **Craftonomics' scan only** under **Price addon** in the options.
 - With neither TSM nor Auctionator, a scan starts by itself when you open the auction house, at most once an hour. Turn that off with **Scan when I open the auction house**, on the tab or in the options.
 - What vendors sell is learned as you visit them.

@@ -114,6 +114,17 @@ local function owned(itemID)
 end
 Model.Owned = owned
 
+-- Whether crafting takes materials out of your bank. Not on WoW Forever: there
+-- it only takes what's in your bags, and the rest has to be fetched first.
+Model.CRAFTS_FROM_BANK = ns.QUALITY_CRAFTING
+
+-- How many of an item are in your bags, and how many more you have elsewhere
+-- (your bank).
+function Model.InBags(itemID)
+	local bags = C_Item.GetItemCount(itemID) or 0
+	return bags, math.max(owned(itemID) - bags, 0)
+end
+
 -- What using `qty` of a material really costs you, or nil without a price. What
 -- you'd buy costs its price; what you already own costs what you'd get selling it
 -- instead (after the auction house cut, when that option is on).

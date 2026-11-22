@@ -40,7 +40,7 @@ local STATE_TEXT = {
 	sold = Color("heading", "Sold"),
 }
 
-local panel, body, away, emptyText, listBox, statusText, nextButton
+local panel, body, away, emptyText, listBox, statusText, nextButton, stopScanButton
 -- Your auctions, as drawn: { id, itemKey, itemID, link, qty, price, sold, ... }.
 local auctions = {}
 -- Whether the auction house has said what your auctions are since it opened.
@@ -293,11 +293,18 @@ draw = function()
 		end
 		if not auction.sold then up = up + 1 end
 	end
+	-- Stop scan sits at the end of the status line, which ends before it.
+	local scanning = ns.PriceScan.State() ~= nil
+	stopScanButton:SetShown(scanning)
+	statusText:SetPoint("RIGHT", scanning and -(PAD + ns.PricesTab.STOP_WIDTH + ns.PricesTab.STOP_GAP) or -PAD, 0)
 	local text
 	if note then
 		text = Color("warning", note)
 	elseif not loaded then
 		text = Color("muted", "Reading your auctions...")
+	elseif scanning then
+		-- The game takes no cancel until Craftonomics' price scan is done.
+		text = Color("warning", "Scan is in progress. Cancel works when it's done.")
 	elseif #auctions == 0 then
 		text = ""
 	else
@@ -418,6 +425,9 @@ function Auctions.Create(parent, width)
 	statusText:SetPoint("RIGHT", -PAD, 0)
 	statusText:SetJustifyH("LEFT")
 	statusText:SetWordWrap(false)
+	-- At the end of that line while a price scan runs.
+	stopScanButton = ns.PricesTab.StopButton(body)
+	stopScanButton:SetPoint("RIGHT", body, "BOTTOMRIGHT", -PAD, 46)
 
 	local again = CreateFrame("Button", nil, body, "UIPanelButtonTemplate")
 	again:SetText("Check again")
@@ -513,4 +523,13 @@ events:SetScript("OnEvent", function(_, event, auctionID)
 			if panel:IsVisible() then refresh() end
 		end)
 	end
+end)
+
+-- The scan notice comes and goes with the scan.
+local scanWas = false
+ns.PriceScan.Watch(function()
+	local scanning = ns.PriceScan.State() ~= nil
+	if scanning == scanWas then return end
+	scanWas = scanning
+	if panel and panel:IsVisible() then draw() end
 end)

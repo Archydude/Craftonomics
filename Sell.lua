@@ -63,7 +63,7 @@ local panel, body, away, emptyText
 local bagBox, bagInset
 local goldBox, silverBox, copperBox, eachText, amountBox, ofText
 local durationButtons = {}
-local totalsText, noteText, postButton, skipButton
+local totalsText, noteText, postButton, skipButton, stopScanButton
 -- Prices in copper, or only whole silver, as this auction house takes them.
 local usesCopper = false
 
@@ -153,12 +153,20 @@ local function depositFor(entry, qty)
 	return deposit
 end
 
+-- Shown while Craftonomics' price scan runs: the game takes no auction until
+-- the scan is done.
+local SCAN_NOTICE = "Scan is in progress. Post works when it's done."
+
 -- The deposit and what you get, what's wrong with the form if anything, and
 -- whether Post can be clicked.
 local function updateTotals()
+	local scanning = ns.PriceScan.State() ~= nil
+	-- Stop scan sits at the end of the message's line, which ends before it.
+	stopScanButton:SetShown(scanning)
+	noteText:SetPoint("RIGHT", scanning and -(PAD + ns.PricesTab.STOP_WIDTH + ns.PricesTab.STOP_GAP) or -PAD, 0)
 	if not selected then
 		totalsText:SetText("")
-		noteText:SetText(Color("muted", searchNote or PICK_TEXT))
+		noteText:SetText(scanning and Color("warning", SCAN_NOTICE) or Color("muted", searchNote or PICK_TEXT))
 		postButton:Disable()
 		skipButton:Disable()
 		return
@@ -187,6 +195,8 @@ local function updateTotals()
 	local vendor = price > 0 and vendorPays(selected.link)
 	if problem then
 		noteText:SetText(Color("warning", problem))
+	elseif scanning and not posting then
+		noteText:SetText(Color("warning", SCAN_NOTICE))
 	elseif vendor and vendor > 0 and price < vendor then
 		noteText:SetText(Color("warning", format("That's less than a vendor pays (%s).", exact(vendor))))
 	else
@@ -1310,6 +1320,9 @@ local function createForm(y)
 	noteText:SetJustifyV("TOP")
 	noteText:SetWordWrap(false) -- every message is written to fit one line
 	noteText:SetHeight(NOTE_LINE)
+	-- At the end of that line while a price scan runs.
+	stopScanButton = ns.PricesTab.StopButton(body)
+	stopScanButton:SetPoint("TOPRIGHT", -PAD, y + 2)
 end
 
 -- Post and Skip, along the bottom.
@@ -1430,4 +1443,18 @@ events:SetScript("OnEvent", function(_, event, numPosted, total)
 	elseif selected then
 		updateTotals()
 	end
+end)
+
+-- Prices changed (an item was just looked up): the list shows them.
+function Sell.Redraw()
+	if panel and panel:IsVisible() and Search.IsOpen() then drawBags() end
+end
+
+-- The scan notice comes and goes with the scan.
+local scanWas = false
+ns.PriceScan.Watch(function()
+	local scanning = ns.PriceScan.State() ~= nil
+	if scanning == scanWas then return end
+	scanWas = scanning
+	if panel and panel:IsVisible() then updateTotals() end
 end)
