@@ -198,6 +198,11 @@ end
 -- The Craft button, at the right of the shopping list button's row: starts the
 -- crafts, as the game's own Create button does.
 local craftButton, craftButtonUsed
+-- The Max button, left of it: starts as many crafts as your materials make, as
+-- the game's Create All button does.
+local maxButton
+local MAX_GAP = 4       -- between it and the Craft button
+local MAX_PADDING = 24  -- its width past its text
 
 -- Its text and whether it can be clicked follow the game's Create button and
 -- amount box: "Craft", or "Craft 5" for more than one.
@@ -207,6 +212,27 @@ local function updateCraftButton()
 	craftButton:SetText(amount > 1 and format("Craft %d", amount) or "Craft")
 	craftButton:SetWidth(craftButton:GetFontString():GetUnboundedStringWidth() + 32)
 	craftButton:SetEnabled(ns.Blizzard.CanCreate())
+	if not maxButton then return end
+	-- Max says how many that is: "Max 30".
+	local all = ns.Blizzard.CreateAllCount()
+	maxButton:SetText(all and format("Max %d", all) or "Max")
+	maxButton:SetWidth(maxButton:GetFontString():GetUnboundedStringWidth() + MAX_PADDING)
+	maxButton:SetEnabled(all ~= nil)
+end
+
+local function showMaxTip(self)
+	local all, reason = ns.Blizzard.CreateAllCount()
+	GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+	GameTooltip:SetText("Craft max")
+	if all then
+		GameTooltip:AddLine(format(all > 1 and "Crafts this %d times: as many as your materials make."
+			or "Crafts this once: all your materials make.", all), 1, 1, 1, true)
+		GameTooltip:AddLine("The same as the Create All button in the crafting window, with the materials picked there.",
+			0.53, 0.53, 0.53, true)
+	else
+		GameTooltip:AddLine(reason or "You can't craft this right now.", 1, 0.3, 0.3, true)
+	end
+	GameTooltip:Show()
 end
 
 local function showCraftTip(self)
@@ -238,10 +264,22 @@ local function addCraftButton(top)
 		end)
 		craftButton:SetScript("OnEnter", showCraftTip)
 		craftButton:SetScript("OnLeave", GameTooltip_Hide)
+		maxButton = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
+		maxButton:SetFrameLevel(frame:GetFrameLevel() + 2)
+		maxButton:SetHeight(BUTTON_HEIGHT)
+		maxButton:SetMotionScriptsWhileDisabled(true)
+		maxButton:SetPoint("RIGHT", craftButton, "LEFT", -MAX_GAP, 0)
+		maxButton:SetScript("OnClick", function()
+			GameTooltip:Hide()
+			ns.Blizzard.CreateAll()
+		end)
+		maxButton:SetScript("OnEnter", showMaxTip)
+		maxButton:SetScript("OnLeave", GameTooltip_Hide)
 	end
 	craftButton:ClearAllPoints()
 	craftButton:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -Layout.PAD_SIDE + 2, -Layout.PAD_TOP - top)
 	craftButton:Show()
+	maxButton:Show()
 	craftButtonUsed = true
 	updateCraftButton()
 end
@@ -818,14 +856,16 @@ local function materialTooltip(model, material, canCycle)
 					0.53, 0.53, 0.53, true)
 			end
 		end
-		tip:AddLine(" ")
+		local canShop = missing > 0 and ns.Shopping.ListTarget()
+		-- What a click does, when it does something.
+		if canCycle or canShop or isCrafted(material) then tip:AddLine(" ") end
 		if canCycle then
 			tip:AddLine(Color("simulated", "Click: try the next quality"))
 			tip:AddLine(Color("simulated", "Right-click: back to what's in the form"))
 		elseif isCrafted(material) then
 			tip:AddLine(Color("simulated", "Click: open its recipe"))
 		end
-		if missing > 0 and ns.Shopping.ListTarget() then
+		if canShop then
 			tip:AddLine(Color("simulated", format(ns.Shopping.ListTarget() == "tsm"
 				and "Shift-click: copy a TSM search for the %d missing"
 				or "Shift-click: add the %d missing to the shopping list", missing)))
@@ -955,18 +995,17 @@ local function drawMaterials(model)
 		local have, banked = onHand(material)
 		local inBank = have < need and banked > 0
 		fetch = fetch or inBank
-		if canCycle or canShop or crafted or inBank then
-			onClick = function(mouseButton)
-				if IsShiftKeyDown() then
-					if canShop then shopMaterial(model, material) end
-				elseif canCycle then
-					ns.Simulation.Cycle(material, mouseButton)
-				elseif crafted and mouseButton == "LeftButton" then
-					openCrafted(model, material)
-				end
+		-- Every row shows its item on hover, whether or not a click does anything.
+		onClick = function(mouseButton)
+			if IsShiftKeyDown() then
+				if canShop then shopMaterial(model, material) end
+			elseif canCycle then
+				ns.Simulation.Cycle(material, mouseButton)
+			elseif crafted and mouseButton == "LeftButton" then
+				openCrafted(model, material)
 			end
-			tooltip = materialTooltip(model, material, canCycle)
 		end
+		tooltip = materialTooltip(model, material, canCycle)
 		local amount = material.price and Money(material.price * material.qty * count) or Color("warning", "no price")
 		local top = contentHeight
 		local short = owned < need
@@ -1659,7 +1698,10 @@ function Panel.Render()
 	for i = dividerCount + 1, #dividers do dividers[i]:Hide() end
 	for i = bandCount + 1, #bands do bands[i]:Hide() end
 	if rowButton and not rowButtonUsed then rowButton:Hide() end
-	if craftButton and not craftButtonUsed then craftButton:Hide() end
+	if craftButton and not craftButtonUsed then
+		craftButton:Hide()
+		maxButton:Hide()
+	end
 	if craftsBox and not craftsBoxUsed then craftsBox:Hide() end
 	for key, check in pairs(checks) do
 		if not checksUsed[key] then check:Hide() end

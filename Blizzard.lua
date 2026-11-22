@@ -700,6 +700,23 @@ function Blizzard.Create()
 	if Blizzard.CanCreate() then ProfessionsFrame.CraftingPage:Create() end
 end
 
+-- How many crafts the game's Create All button would start: as many as your
+-- materials make. Nil when it can't be clicked right now (a recipe made one at a
+-- time, or nothing you can make), with the game's own reason, if it gives one.
+function Blizzard.CreateAllCount()
+	local page = ProfessionsFrame.CraftingPage
+	local button = page.CreateAllButton
+	if not (Blizzard.ShowsCreate() and button and page.CreateAll and page.GetCraftableCount) then return end
+	if not (button:IsShown() and button:IsEnabled()) then return nil, button.tooltipText end
+	local ok, count = pcall(page.GetCraftableCount, page)
+	if ok and type(count) == "number" and count >= 1 and count < math.huge then return count end
+end
+
+-- Starts that many crafts, as a click on the game's Create All button does.
+function Blizzard.CreateAll()
+	if Blizzard.CreateAllCount() then ProfessionsFrame.CraftingPage:CreateAll() end
+end
+
 -- Calls onChange() when the Create button, or its amount box, may have changed.
 function Blizzard.WatchCreate(onChange)
 	local page = ProfessionsFrame.CraftingPage

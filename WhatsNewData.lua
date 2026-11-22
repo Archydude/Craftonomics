@@ -2,10 +2,14 @@
 ArchdudeWhatsNew:Register("Craftonomics", {
 	title = "Craftonomics",
 	icon = "Interface\\Icons\\INV_Hammer_20",
-	version = "5.11.0",
+	version = "5.12.0",
 	seen = "CraftonomicsWhatsNew",
 	saved = { "CraftonomicsDB", "CraftonomicsCharDB" },
 	changes = {
+		{ "5.12.0",
+			"|cffffd100Max button on the panel:|r left of the Craft button, |cffffd100Max|r starts as many crafts as your materials make, as the game's Create All button does. It says how many, like |cffffd100Max 30|r, and is greyed out when the game's button is.",
+			"Fixed: on the panel, a material you had enough of showed no tooltip. Every material row now shows its item on hover.",
+		},
 		{ "5.11.0",
 			"|cffffd100Materials in your bank (WoW Forever):|r crafting there only takes what's in your bags, so the panel's material rows now count your bags, like the game's own window. A material your bags are short of shows what your bank holds after its count, with a bank mark: in orange when bags and bank together are enough, and a line under the materials says to take them out of the bank. Hover a row for how many are in each. The shopping list still counts your bank, so nothing in it is bought again.",
 			"|cffffd100A looked-up price counts everywhere:|r picking an item on the Sell tab asks the auction house what it's listed for right now. When your prices come from Craftonomics' own scan or from |cffffd100Freshest prices|r, that lowest price is now the item's price everywhere: the Sell list's Price column, the panel, Best crafts and tooltips. The same goes for items My auctions checks, and stackable items the game's own window lists.",
@@ -58,10 +62,6 @@ ArchdudeWhatsNew:Register("Craftonomics", {
 			"|cffffd100The Crafts box counts down:|r each craft you finish takes one off, down to 1, so the panel shows how many are left to make and the materials for those.",
 			"|cffffd100Back to the recipe you came from (WoW Forever):|r after you click a material you craft yourself to open its recipe, a |cffffd100Back to|r row at the top of the panel returns to the recipe you came from. The material's Crafts box starts on what you're short of for the crafts you were looking at, and going back puts the first recipe's number back.",
 			"Fixed on WoW Forever: clicking a material you craft yourself could fail with \"Couldn't open the profession that makes ... right now.\"",
-		},
-		{ "5.3.0",
-			"|cffffd100Heatmap in All recipes (with TSM):|r a new dropdown at the bottom right of the All recipes window shows the recipes as a heatmap instead of a list: |cffffd100Heatmap: crafted items|r or |cffffd100Heatmap: materials|r. Every item is a tile. Its color is TSM's trend: red when the item's market value is below its historical price, green when it's above. Its size is the gold of the item sold in a day. Crafted items are grouped by profession, materials by what kind of item they are.",
-			"Click a group to see only its items, and right-click or |cffffd100Back|r to return. Hover a tile for its trend, market value, historical price, sales and TSM sale rate. Items too small for a tile of their own share a |cffffd100more|r tile. The search, the profession and the filters apply to the heatmap too.",
 		},
 	},
 })

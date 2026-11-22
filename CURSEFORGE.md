@@ -43,7 +43,7 @@ Craftonomics, formerly **Craft Profit**, answers in gold: **profit or loss?** A 
 - **Patron orders**: profit, rewards and missing materials in Blizzard's Patron tab, crafted from there
 
 ### Crafts and orders
-The sale price at the rank you'll get, minus the 5% cut and your materials. On orders: the commission, minus the materials **you** supply, plus sellable rewards. With concentration on, the **concentration strategy** picks the materials: cheapest, least concentration or most **gold per point**. The **Crafts** box multiplies it. A warning shows when the **AH deposit** is high on an item that sells poorly. Weapons and armor show their **disenchant value** and when disenchanting beats selling. Materials show what you **have**, and a **Craft** button crafts from the panel.
+The sale price at the rank you'll get, minus the 5% cut and your materials. On orders: the commission, minus the materials **you** supply, plus sellable rewards. With concentration on, the **concentration strategy** picks the materials: cheapest, least concentration or most **gold per point**. The **Crafts** box multiplies it. A warning shows when the **AH deposit** is high on an item that sells poorly. Weapons and armor show their **disenchant value** and when disenchanting beats selling. Materials show what you **have**, and **Craft** and **Max** buttons craft from the panel.
 
 ### What should I craft?
 **Best crafts** has a **Return** column, and with TSM each item's **sale rate** and **trend**.
@@ -74,18 +74,22 @@ This addon was made with AI.
 ## B. Upload File form
 
 **Files:** two, each uploaded with only its own game versions (why is in [UPLOADING.md](../UPLOADING.md)). The display name, release type and changelog are the same for both.
-- `dist\Craftonomics-5.11.0-retail.zip`: Retail `12.1.5`
-- `dist\Craftonomics-5.11.0-forever.zip`: WoW Forever `1.60.1`
+- `dist\Craftonomics-5.12.0-retail.zip`: Retail `12.1.5`
+- `dist\Craftonomics-5.12.0-forever.zip`: WoW Forever `1.60.1`
 
 **Display name**
 ```
-Craftonomics 5.11.0
+Craftonomics 5.12.0
 ```
 
 **Release type:** `Release`
 
 **Changelog** (paste only the newest part; paste older parts too if they never went up)
 ```markdown
+5.12.0
+- **Max button on the panel:** left of the Craft button, **Max** starts as many crafts as your materials make, as the game's Create All button does. It says how many, like **Max 30**, and is greyed out when the game's button is.
+- Fixed: on the panel, a material you had enough of showed no tooltip. Every material row now shows its item on hover.
+
 5.11.0
 - **Materials in your bank (WoW Forever):** crafting there only takes what's in your bags, so the panel's material rows now count your bags, like the game's own window. A material your bags are short of shows what your bank holds after its count, with a bank mark: in orange when bags and bank together are enough, and a line under the materials says to take them out of the bank. Hover a row for how many are in each. The shopping list still counts your bank, so nothing in it is bought again.
 - **A looked-up price counts everywhere:** picking an item on the Sell tab asks the auction house what it's listed for right now. When your prices come from Craftonomics' own scan or from **Freshest prices**, that lowest price is now the item's price everywhere: the Sell list's Price column, the panel, Best crafts and tooltips. The same goes for items My auctions checks, and stackable items the game's own window lists.
