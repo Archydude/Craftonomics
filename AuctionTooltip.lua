@@ -188,9 +188,17 @@ local function onItem(tooltip, data)
 			local icon = professionIcon(step.professionID)
 			tooltip:AddLine(string.rep("  ", index) .. (icon and format("|T%s:0|t ", icon) or "") .. name, 1, 1, 1)
 		end
-		-- With TSM: how well what it makes sells. Always, never, or while Shift is held.
-		local shown = db.tipBestRate == "always" or (db.tipBestRate ~= "never" and IsShiftKeyDown())
-		if best.saleRate and shown then
+		-- Each always, never, or while Shift is held.
+		local function shown(choice)
+			return choice == "always" or (choice ~= "never" and IsShiftKeyDown())
+		end
+		-- The craft's return: its profit as a share of what its materials cost.
+		local share = shown(db.tipBestShowReturn) and ns.Format.ReturnShare(best.profit, best.cost)
+		if share then
+			tooltip:AddDoubleLine("  Return", ns.Format.Return(share), 0.53, 0.53, 0.53, 1, 1, 1)
+		end
+		-- With TSM: how well what it makes sells.
+		if best.saleRate and shown(db.tipBestRate) then
 			tooltip:AddDoubleLine("  TSM Sale Rate", ns.Format.SaleRate(best.saleRate), 0.53, 0.53, 0.53, 1, 1, 1)
 		end
 	end

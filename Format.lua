@@ -49,6 +49,22 @@ function Format.Trend(trend)
 	return ns.Color("profit", format("%s%.0f%%", trend > 0 and "+" or "", trend))
 end
 
+-- A craft's return: its profit as a share of what its materials cost (0.25 when
+-- 100g of materials make 25g). Nil when the materials cost nothing, or there's no
+-- profit to go on.
+function Format.ReturnShare(profit, cost)
+	if not (profit and cost and cost > 0) then return end
+	return profit / cost
+end
+
+-- A return (see Format.ReturnShare) as "+25%" in the profit color, or "-5%" in the
+-- loss color.
+function Format.Return(share)
+	local percent = math.floor(math.abs(share) * 100 + 0.5)
+	local sign = percent == 0 and "" or (share > 0 and "+" or "-")
+	return ns.Color(ns.AmountColor(share), sign .. BreakUpLargeNumbers(percent) .. "%")
+end
+
 -- How many of an item sell in a day: "1,240" from a hundred up, "3.4" below, and
 -- "<0.1" for hardly any.
 function Format.SoldPerDay(sold)

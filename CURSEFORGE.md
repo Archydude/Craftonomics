@@ -33,20 +33,20 @@ Profit or loss on every craft, which recipes are worth making, and its own aucti
 
 Craftonomics, formerly **Craft Profit**, answers in gold: **profit or loss?** A panel next to your profession window prices every craft and crafting order. On **Retail** and **WoW Forever**.
 
-- **Expected profit** on every craft, procs included
+- **Expected profit** on every craft, procs included, and its **return** on the materials' cost
 - **Best crafts**: every recipe ranked by profit, across all your characters
 - **Profit on every recipe** in the game's own recipe list
 - **All recipes**: every profession's recipes, as a list or a **trend heatmap**
-- **Ledger**: your profit so far, what's waiting to sell and how each item is doing, with what you vendored, used, disenchanted or gave away counted
+- **Ledger**: your profit so far, what's waiting to sell, and what you vendored, used, disenchanted or gave away
 - **Auction house window**: shopping list, selling, cancelling undercut auctions
 - **No price addon needed**: its own price scan, **TradeSkillMaster** or **Auctionator** prices, or whichever is **freshest**
 - **Patron orders**: profit, rewards and missing materials in Blizzard's Patron tab, crafted from there
 
 ### Crafts and orders
-The sale price at the rank you'll get, minus the 5% cut and your materials. On orders: the commission, minus the materials **you** supply, plus sellable rewards. With concentration on, the **concentration strategy** picks the materials: cheapest, least concentration or most **gold per point**. The **Crafts** box shows it for any number of crafts. A warning shows when the **AH deposit** is high on an item that sells poorly, and for weapons and armor the panel shows the **disenchant value** and when disenchanting beats selling. Materials show what you **have** of what you need, and a **Craft** button crafts from the panel.
+The sale price at the rank you'll get, minus the 5% cut and your materials. On orders: the commission, minus the materials **you** supply, plus sellable rewards. With concentration on, the **concentration strategy** picks the materials: cheapest, least concentration or most **gold per point**. The **Crafts** box shows it for any number of crafts. A warning shows when the **AH deposit** is high on an item that sells poorly. Weapons and armor show their **disenchant value** and when disenchanting beats selling. Materials show what you **have**, and a **Craft** button crafts from the panel.
 
 ### What should I craft?
-With TSM, **Best crafts** shows each item's **sale rate** and **trend**.
+**Best crafts** has a **Return** column, and with TSM each item's **sale rate** and **trend**.
 
 **All recipes** lists every profession's sellable recipes and their profit. With TSM, switch it to a **heatmap**: tiles colored by trend and sized by gold sold per day.
 
@@ -57,7 +57,7 @@ With TSM, **Best crafts** shows each item's **sale rate** and **trend**.
 Best crafts shows what a **skill point** costs. **Craft myself** prices materials at what crafting them costs, and **Cheapest way** crafts or buys each, whichever is cheaper.
 
 ### Item tooltips
-Vendor and auction prices and the **AH deposit**, plus with TSM the **sale rate**, **trend** and whether the lowest auction is **cheap** or **expensive**. On a material: the **best craft** it leads to, chains of crafts included, and its profit.
+Vendor and auction prices and the **AH deposit**, plus with TSM the **sale rate**, **trend** and whether the lowest auction is **cheap** or **expensive**. On a material: the **best craft** it leads to, chains of crafts included, with its profit and return.
 
 ### Good to know
 **TSM prices for alts** that keep TSM turned off. Type **/craftonomics** for options.
@@ -74,18 +74,24 @@ This addon was made with AI.
 ## B. Upload File form
 
 **Files:** two, each uploaded with only its own game versions (why is in [UPLOADING.md](../UPLOADING.md)). The display name, release type and changelog are the same for both.
-- `dist\Craftonomics-5.9.1-retail.zip`: Retail `12.1.5`
-- `dist\Craftonomics-5.9.1-forever.zip`: WoW Forever `1.60.1`
+- `dist\Craftonomics-5.10.0-retail.zip`: Retail `12.1.5`
+- `dist\Craftonomics-5.10.0-forever.zip`: WoW Forever `1.60.1`
 
 **Display name**
 ```
-Craftonomics 5.9.1
+Craftonomics 5.10.0
 ```
 
 **Release type:** `Release`
 
 **Changelog** (paste only the newest part; paste older parts too if they never went up)
 ```markdown
+5.10.0
+- **Return:** on the panel, under a craft's profit or loss: the profit as a share of what the materials cost, like **+25%** in green (every 100 gold of materials makes 25 gold) or **-5%** in red. A low return leaves little room: a small change in prices turns the craft into a loss. Not on crafting orders.
+- **Return column in Best crafts:** the same number for every recipe. Click its header to sort by it; it's in each row's tooltip too. It shows by default on WoW Forever; on Retail, right-click a header to pick it.
+- **Best craft's return:** on a material's tooltip, hold **Shift** to see the best craft's return under the Best Craft lines. **Best craft's return** on the Tooltips options page shows it always, or never.
+- **Weigh best craft by return:** a new option on the Tooltips options page, off by default. With it on, when the best craft is picked, a recipe's profit counts for more the higher its return and for less the lower: as it is at a return of 25%, double at 50%, half at 12.5%, and never more than four times. So a craft that risks little gold for its profit can beat one that makes more from costly materials. The line still shows the craft's real profit. With **Weigh best craft by sale rate** on as well, both count.
+
 5.9.1
 - **Close button on the panel:** an **X** in the panel's top right corner closes it. The Craftonomics button at the top of the profession window opens it again.
 - The **Open with the profession window** tick box is back at the bottom of the panel.

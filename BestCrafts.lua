@@ -739,12 +739,27 @@ end
 -- at half of it, for half.
 local FULL_SALE_RATE = 0.70
 
+-- With "Weigh best craft by return" on: at this return (the profit as a share
+-- of what the materials cost) a craft's profit counts as it is when the best
+-- craft is picked. Above and below it, in proportion: at twice it, double, at
+-- half of it, half. Never for more than MAX_RETURN_WEIGHT times the profit, which
+-- is also what a craft whose materials cost nothing counts for.
+local EVEN_RETURN = 0.25
+local MAX_RETURN_WEIGHT = 4
+
 -- What a craft's profit counts for when the best craft is picked: the profit,
--- or with that option on, less of it the worse what it makes sells. A loss
--- counts as it is, and so does a profit TSM has no sale rate for.
-local function scoreOf(profit, saleRate)
-	if not (ns.db.tipBestWeigh and saleRate) or profit <= 0 then return profit end
-	return profit * math.min(saleRate / FULL_SALE_RATE, 1)
+-- or with those options on, less of it the worse what it makes sells, and more
+-- or less of it with its return on `cost`, its materials'. A loss counts as it
+-- is, and the sale rate leaves a profit as it is when TSM has no rate for it.
+local function scoreOf(profit, saleRate, cost)
+	if profit <= 0 then return profit end
+	local score = profit
+	if ns.db.tipBestWeigh and saleRate then score = score * math.min(saleRate / FULL_SALE_RATE, 1) end
+	if ns.db.tipBestReturn then
+		local weight = (cost or 0) > 0 and profit / cost / EVEN_RETURN or MAX_RETURN_WEIGHT
+		score = score * math.min(weight, MAX_RETURN_WEIGHT)
+	end
+	return score
 end
 
 -- Whether a chain of `count` crafts that counts for `score` beats the best so
@@ -778,9 +793,10 @@ local function bestFrom(itemID, onPath, depth)
 		else
 			-- Crafted and sold.
 			local profit = ns.db.countProcs and row.expected or row.profit
-			local score = profit and scoreOf(profit, row.saleRate)
+			local score = profit and scoreOf(profit, row.saleRate, row.cost)
 			if score and row.unpriced == 0 and beats(score, 1, found) then
-				found = { profit = profit, score = score, saleRate = row.saleRate, steps = { chainStep(entry, row) } }
+				found = { profit = profit, cost = row.cost, score = score, saleRate = row.saleRate,
+					steps = { chainStep(entry, row) } }
 			end
 			-- Or crafted and put into another craft.
 			if made and recipesUsing(made) then
@@ -792,7 +808,8 @@ local function bestFrom(itemID, onPath, depth)
 					if further and beats(further.score, #further.steps + 1, found) then
 						local steps = { chainStep(entry, row) }
 						for _, step in ipairs(further.steps) do steps[#steps + 1] = step end
-						found = { profit = further.profit, score = further.score, saleRate = further.saleRate, steps = steps }
+						found = { profit = further.profit, cost = further.cost, score = further.score,
+							saleRate = further.saleRate, steps = steps }
 					end
 				end
 			end
@@ -809,7 +826,8 @@ end
 -- its saved recipes (every profession it has opened). That's a recipe that takes
 -- `itemID`, or one further down a chain: a recipe that takes what such a recipe
 -- makes, and so on. { profit = of one craft of the last recipe, as the list
--- shows it, score = what that counted for when it was picked (see scoreOf),
+-- shows it, cost = what that craft's materials cost,
+-- score = what the profit counted for when it was picked (see scoreOf),
 -- saleRate = TSM's for what that makes (nil without TSM), steps = the
 -- crafts in order, each { name, itemID, professionID } }. Nil when no recipe
 -- takes it, or none on the way has a profit to show (no price for what it makes,

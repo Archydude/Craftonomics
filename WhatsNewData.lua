@@ -2,10 +2,16 @@
 ArchdudeWhatsNew:Register("Craftonomics", {
 	title = "Craftonomics",
 	icon = "Interface\\Icons\\INV_Hammer_20",
-	version = "5.9.1",
+	version = "5.10.0",
 	seen = "CraftonomicsWhatsNew",
 	saved = { "CraftonomicsDB", "CraftonomicsCharDB" },
 	changes = {
+		{ "5.10.0",
+			"|cffffd100Return:|r on the panel, under a craft's profit or loss: the profit as a share of what the materials cost, like |cffffd100+25%|r in green (every 100 gold of materials makes 25 gold) or |cffffd100-5%|r in red. A low return leaves little room: a small change in prices turns the craft into a loss. Not on crafting orders.",
+			"|cffffd100Return column in Best crafts:|r the same number for every recipe. Click its header to sort by it; it's in each row's tooltip too. It shows by default on WoW Forever; on Retail, right-click a header to pick it.",
+			"|cffffd100Best craft's return:|r on a material's tooltip, hold |cffffd100Shift|r to see the best craft's return under the Best Craft lines. |cffffd100Best craft's return|r on the Tooltips options page shows it always, or never.",
+			"|cffffd100Weigh best craft by return:|r a new option on the Tooltips options page, off by default. With it on, when the best craft is picked, a recipe's profit counts for more the higher its return and for less the lower: as it is at a return of 25%, double at 50%, half at 12.5%, and never more than four times. So a craft that risks little gold for its profit can beat one that makes more from costly materials. The line still shows the craft's real profit. With |cffffd100Weigh best craft by sale rate|r on as well, both count.",
+		},
 		{ "5.9.1",
 			"|cffffd100Close button on the panel:|r an |cffffd100X|r in the panel's top right corner closes it. The Craftonomics button at the top of the profession window opens it again.",
 			"The |cffffd100Open with the profession window|r tick box is back at the bottom of the panel.",
@@ -55,9 +61,6 @@ ArchdudeWhatsNew:Register("Craftonomics", {
 		{ "5.2.2",
 			"Fixed: after you pressed Shift over an item's tooltip, right-clicking an item in your bags to use it, like a recipe, could fail with the error \"AddOn 'Craftonomics' tried to call the protected function 'UNKNOWN()'\".",
 			"Changed: in the bank, a stack's tooltip no longer changes while you hover it. Hold |cffffd100Shift|r first, then hover the stack, to see the whole stack's amounts. In your bags it still changes as you press Shift.",
-		},
-		{ "5.2.1",
-			"Changed: the |cffffd100TSM Lowest vs Market|r line on item tooltips now says |cffffd100Cheap|r or |cffffd100Expensive|r instead of Buy or Sell, like |cffffd100Cheap -18%|r or |cffffd100Expensive +12%|r.",
 		},
 	},
 })

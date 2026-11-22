@@ -1,5 +1,11 @@
 # Changelog
 
+## 5.10.0
+- **Return:** on the panel, under a craft's profit or loss: the profit as a share of what the materials cost, like **+25%** in green (every 100 gold of materials makes 25 gold) or **-5%** in red. A low return leaves little room: a small change in prices turns the craft into a loss. Not on crafting orders.
+- **Return column in Best crafts:** the same number for every recipe. Click its header to sort by it; it's in each row's tooltip too. It shows by default on WoW Forever; on Retail, right-click a header to pick it.
+- **Best craft's return:** on a material's tooltip, hold **Shift** to see the best craft's return under the Best Craft lines. **Best craft's return** on the Tooltips options page shows it always, or never.
+- **Weigh best craft by return:** a new option on the Tooltips options page, off by default. With it on, when the best craft is picked, a recipe's profit counts for more the higher its return and for less the lower: as it is at a return of 25%, double at 50%, half at 12.5%, and never more than four times. So a craft that risks little gold for its profit can beat one that makes more from costly materials. The line still shows the craft's real profit. With **Weigh best craft by sale rate** on as well, both count.
+
 ## 5.9.1
 - **Close button on the panel:** an **X** in the panel's top right corner closes it. The Craftonomics button at the top of the profession window opens it again.
 - The **Open with the profession window** tick box is back at the bottom of the panel.

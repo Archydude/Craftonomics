@@ -69,6 +69,8 @@ local COLUMNS = {
 	{ key = "skillup", width = 84, header = "Per skill-up", sort = "skillup", forever = true },
 	{ key = "chance", width = 56, header = "Chance", sort = "chance", forever = true },
 	{ key = "cost", width = 112, goldWidth = 70, foreverWidth = 76, header = "Cost", sort = "cost" },
+	-- Starts hidden off WoW Forever, like Trend.
+	{ key = "returns", width = 56, header = "Return", sort = "returns", offByDefault = ns.QUALITY_CRAFTING },
 	{ key = "profit", width = 112, goldWidth = 70, foreverWidth = 76, header = "Profit", sort = "profit", fixed = true },
 	{ key = "procs", width = 96, goldWidth = 56, header = "Procs", sort = "procs", needsProcs = true },
 	{ key = "plain", width = 112, goldWidth = 64, header = "No procs", sort = "plain", needsProcs = true },
@@ -86,6 +88,9 @@ local HEADER_TIPS = {
 	plain = "What one craft makes with no procs at all: the part that doesn't depend on luck.",
 	procs = "What multicraft and resourcefulness add to a craft on average. Any one craft can get all of it or none.",
 	cost = "What the materials for one craft cost, at the rank and with the materials your crafting strategy picks.",
+	returns = "The profit as a share of what the materials cost: +25% means every 100 gold of materials makes 25 "
+		.. "gold. A low return leaves little room: a small change in prices turns the craft into a loss. Recipes "
+		.. "without a profit or a material cost show -.",
 	listed ="How many were up for sale the last time Auctionator saw them. Needs Auctionator.",
 	perDay = "How many sell per day across your region, on average, from TSM.",
 	saleRate = "Of the auctions posted for this item, the share that sells, from TSM: a high rate means it sells, a "
@@ -117,6 +122,12 @@ end
 local function shownProfit(row)
 	if ns.db.countProcs then return row.expected end
 	return row.profit
+end
+
+-- The shown profit as a share of what the materials cost, for the Return column.
+-- Nil (which sorts last) without a profit or a cost.
+local function returnOf(row)
+	return ns.Format.ReturnShare(shownProfit(row), row.cost)
 end
 
 -- How many of the item sell per day: across your region with TSM, or your own
@@ -153,6 +164,7 @@ local SORT_VALUES = {
 	plain = function(row) return row.profit end,
 	procs = function(row) return row.profit and row.procs and row.procs.total end,
 	cost = function(row) return row.cost end,
+	returns = returnOf,
 	listed = function(row) return row.listed end,
 	sold = function(row) return row.itemName and row.sold or nil end,
 	perDay = function(row) return row.soldPerDay end,
@@ -453,6 +465,8 @@ local function rowTooltip(tip, row)
 				procs.savedShare * 100), signedMoney(procs.resourcefulness), 0.53, 0.53, 0.53, 0.53, 0.53, 0.53)
 		end
 	end
+	local share = returnOf(row)
+	if share then addPair(tip, "Return", ns.Format.Return(share)) end
 	if row.unpriced > 0 then
 		tip:AddLine(format("%d material(s) have no price, so profit is too high", row.unpriced), 1, 0.4, 0.4, true)
 	end
@@ -690,6 +704,8 @@ local function drawRow(button, row)
 	local procs = row.profit and row.procs and row.procs.total
 	button.cells.procs:SetText(procs and signedMoney(procs) or Color("muted", "-"))
 	button.cells.cost:SetText((row.cost or 0) > 0 and Color("loss", Money(-row.cost)) or Color("muted", "-"))
+	local share = returnOf(row)
+	button.cells.returns:SetText(share and ns.Format.Return(share) or Color("muted", "-"))
 	local daily = goldPerDay(row)
 	button.cells.gold:SetText(daily and dailyText(daily) or Color("muted", "-"))
 	-- A cost is gold spent, so it shows like Cost; a gain like Profit.

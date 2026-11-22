@@ -539,6 +539,21 @@ function Options.Create()
 		"a tenth. So a craft that sells well can beat one that makes more but rarely sells.\n\n" ..
 		"The Best Craft line still shows the craft's real profit. A recipe TSM has no sale rate for counts in " ..
 		"full, and one with a sale rate of 0% is never the best craft.")
+	checkbox("tipBestReturn", "Weigh best craft by return",
+		"When the best craft is picked, a recipe's profit counts for more the higher its return (its profit as a " ..
+		"share of what its materials cost), and for less the lower: as it is at a return of 25%, double at 50%, " ..
+		"half at 12.5%. It never counts for more than four times, which a return of 100% reaches. So a craft that " ..
+		"risks little gold for its profit can beat one that makes more from costly materials.\n\n" ..
+		"The Best Craft line still shows the craft's real profit. With Weigh best craft by sale rate on as well, " ..
+		"both count.")
+	dropdown("tipBestShowReturn", "Best craft's return", {
+		{ "shift", "While holding Shift" },
+		{ "always", "Always" },
+		{ "never", "Never" },
+	}, "Under the Best Craft lines: the craft's return, its profit as a share of what its materials cost, like " ..
+		"+25%.\n\n" ..
+		"While holding Shift: in your bags it shows as you press Shift; anywhere else, hold Shift first, then " ..
+		"hover the item.")
 	dropdown("tipBestRate", "Best craft's sale rate", {
 		{ "shift", "While holding Shift" },
 		{ "always", "Always" },

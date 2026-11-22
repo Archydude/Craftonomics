@@ -1045,6 +1045,15 @@ local function priceAgeText(model)
 	return text
 end
 
+-- What the Return line means, on hover.
+local function returnTooltip(tip)
+	tip:SetText("Return")
+	tip:AddLine("Your profit as a share of what the materials cost: +25% means every 100 gold of materials "
+		.. "makes 25 gold.", 1, 1, 1, true)
+	tip:AddLine("A low return leaves little room: a small drop in the item's price, or a small rise in the "
+		.. "materials', turns the craft into a loss.", 0.53, 0.53, 0.53, true)
+end
+
 -- The answer, under the title: the expected profit in the big font, with what a
 -- craft makes without procs under it in grey. Without procs to expect: Profit/Loss.
 -- On the crafting page the Crafts box is over it, and the amounts are for that
@@ -1072,6 +1081,9 @@ local function drawHeadline(model)
 		profitRow = addRow(label .. times,
 			Color(ns.AmountColor(amount), Money(amount * count)), fonts.total)
 	end
+	-- How much that is for the gold the materials take: the same for any number of crafts.
+	local share = model.kind == "craft" and ns.Format.ReturnShare(amount, model.cost)
+	if share then addRow(Color("muted", "Return"), ns.Format.Return(share), nil, nop, returnTooltip) end
 	contentHeight = contentHeight + HERO_PAD - 2
 	local tint = amount >= 0 and PROFIT_TINT or LOSS_TINT
 	gradient(addBand(top, contentHeight - top, BOX_INSET), "HORIZONTAL", tint, 0.10, tint, 0)
