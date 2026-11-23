@@ -14,7 +14,7 @@ local WIDTH, HEIGHT = 1240, 660
 local SIDE = 12             -- window edge to its content
 local FILTERS_TOP = 30      -- window top to the filters
 local TILES_TOP = 62        -- window top to the totals
-local TILE_WIDTH, TILE_HEIGHT = 200, 64
+local TILE_WIDTH, TILE_HEIGHT = 186, 64 -- narrow enough that the bar's five parts fit beside the totals
 local TILE_GAP = 6
 local CARDS_TOP = TILES_TOP + TILE_HEIGHT + TILE_GAP -- window top to the three things that stand out
 local CARD_HEIGHT = 46
@@ -31,7 +31,7 @@ local TAB_PADDING = 16      -- room beside a tab's label, so it's never cut shor
 local TAB_KEYS = { "items", "bought" }
 local TAB_LABELS = { "Crafting", "Purchases" }
 local TILE_LABELS = {
-	items = { "Profit so far", "Waiting to sell", "If it all sells" },
+	items = { "Profit so far", "On the auction house", "If it all sells" },
 	bought = { "Spent", "Against your price", "Resale profit" },
 }
 local FLOW_BAR_HEIGHT = 12  -- the bar of where the materials' gold went
@@ -44,9 +44,12 @@ local WHITE = "Interface\\Buttons\\WHITE8X8"
 local FLOW_PARTS = {
 	{ key = "sold", name = "Sold", color = { 0.30, 0.72, 0.36 },
 		tip = "In items that sold, and in orders, which are paid when they're done." },
-	{ key = "waiting", name = "Waiting to sell", color = { 0.93, 0.62, 0.15 },
-		tip = "In items you crafted that haven't sold or been used yet." },
-	{ key = "used", name = "Used in your crafts", color = { 0.55, 0.55, 0.55 },
+	{ key = "posted", name = "Posted", color = { 0.93, 0.62, 0.15 },
+		tip = "In items that are on the auction house right now and haven't sold yet." },
+	{ key = "kept", name = "Not posted", color = { 0.78, 0.72, 0.42 },
+		tip = "In items you crafted and still have, but that aren't on the auction house: not posted yet, or an "
+			.. "auction of them ran out or was cancelled." },
+	{ key = "used", name = "Used", color = { 0.55, 0.55, 0.55 },
 		tip = "In items you crafted and then used as materials in your other crafts." },
 	{ key = "gone", name = "Gone", color = { 0.42, 0.30, 0.30 },
 		tip = "In items you used yourself, destroyed, mailed, traded or wrote off: gone without a sale, so no profit "
@@ -82,6 +85,9 @@ local SHOWS_PROCS = ns.QUALITY_CRAFTING
 local NO_CRAFTS = "Nothing here yet. Crafts are recorded from now on, with what the panel forecast for them."
 local NO_BOUGHT = "Nothing here yet. What you buy on the auction house, and materials from vendors, are recorded from now on."
 local NO_MATCH = "Nothing matches the filters."
+-- How it's known what's on the auction house, for the tooltips that count it.
+local POSTED_NOTE = "An auction counts until it sells, you cancel it or its time is over. One you posted or "
+	.. "cancelled before this version counts as up for as long as an auction can last."
 local NO_COST = "Crafted while the Craftonomics panel wasn't showing this recipe, so what its materials cost isn't known. It's left out of profit."
 local MATCH_NOTE = "A sale counts toward your oldest unsold craft of that item and rank, so one craft's result is an estimate. Totals are what really sold."
 
@@ -231,17 +237,19 @@ local function craftStatus(craft)
 		return Color("good", "Used")
 	end
 	if craft.sold + craft.used > 0 then return format("%d of %d sold", craft.sold + craft.used, craft.qty) end
-	return Color("missing", "Not sold yet")
+	if (craft.posted or 0) > 0 then return Color("missing", "On the auction house") end
+	return Color("missing", "Not posted")
 end
 
 
 -- Where the gold put into materials went, for the crafts in view: sold (in items
--- that sold, and in orders, which are paid when done), waiting (in items not sold
--- or used yet), used (in items that went into your own crafts) and gone (in items
--- that left you without a sale). And ifAll: the profit still to come if what's
--- waiting sells for what it was worth when crafted.
+-- that sold, and in orders, which are paid when done), posted (in items on the
+-- auction house), kept (in items you still have that aren't), used (in items that
+-- went into your own crafts) and gone (in items that left you without a sale).
+-- And ifAll: the profit still to come if what's on the auction house sells for
+-- what it's posted for.
 local function flowOf(list)
-	local parts = { sold = 0, waiting = 0, used = 0, gone = 0, ifAll = 0 }
+	local parts = { sold = 0, posted = 0, kept = 0, used = 0, gone = 0, ifAll = 0 }
 	for _, craft in ipairs(list) do
 		if not craft.noCost and craft.qty > 0 then
 			if craft.kind == "craft" and craft.itemID then
@@ -249,8 +257,9 @@ local function flowOf(list)
 				parts.sold = parts.sold + share * craft.sold
 				parts.used = parts.used + share * craft.used
 				parts.gone = parts.gone + share * craft.gone
-				parts.waiting = parts.waiting + share * craft.left
-				if craft.unit > 0 then parts.ifAll = parts.ifAll + (craft.unit - share) * craft.left end
+				parts.posted = parts.posted + share * craft.posted
+				parts.kept = parts.kept + share * (craft.left - craft.posted)
+				parts.ifAll = parts.ifAll + craft.postedMoney - share * craft.posted
 			else
 				parts.sold = parts.sold + craft.cost
 			end
@@ -301,9 +310,11 @@ local function itemStatus(item)
 	end
 	if item.sold == 0 then
 		local worth = item.pending > 0 and (", worth " .. Money(item.pending)) or ""
+		-- Nothing of it is on the auction house: it can't sell from your bags.
+		if item.posted == 0 then return Color("missing", "Not posted" .. worth), 4 end
 		local days = daysWaiting(item)
 		if days >= SLOW_DAYS then return Color("missing", format("Not selling for %d days%s", days, worth)), 6 end
-		return Color("missing", "Waiting to sell" .. worth), 4
+		return Color("missing", "On the auction house" .. worth), 4
 	end
 	if under then return Color("loss", under), 5 end
 	local gone = format("%s of %s sold", sold, BreakUpLargeNumbers(item.items))
@@ -429,8 +440,11 @@ local COLUMNS = {
 				if row.month then return Color("muted", "-") end
 				return count(row.detail and row.left or row.unsold)
 			end },
+		-- Of what's left, how many are on the auction house.
+		{ key = "posted", header = "Posted", width = 60, sort = "posted",
+			text = function(row) return row.month and Color("muted", "-") or count(row.posted) end },
 		{ key = "earned", header = "Profit", width = 120, sort = "earned", text = profitText },
-		{ key = "status", header = "How it's going", width = 340, left = true, sort = "statusOrder",
+		{ key = "status", header = "How it's going", width = 290, left = true, sort = "statusOrder",
 			text = function(row)
 				if row.month then return "" end
 				return row.detail and craftStatus(row) or row.status
@@ -544,6 +558,7 @@ local function craftTooltip(craft)
 		if craft.usedAtCost > 0 then addPair("Of those, counted at their cost", craft.usedAtCost) end
 		if craft.disenchanted > 0 then addPair("Of those, disenchanted", craft.disenchanted) end
 		addGone(craft)
+		if (craft.posted or 0) > 0 then addPair("On the auction house", craft.posted) end
 	elseif craft.kind ~= "craft" then
 		if not craft.noCost then addPair("Paid", Money(craft.money)) end
 	end
@@ -571,6 +586,10 @@ local function itemTooltip(item)
 	if item.used > 0 then addPair("Used in your crafts", item.used) end
 	if (item.disenchanted or 0) > 0 then addPair("Of those, disenchanted", item.disenchanted) end
 	addGone(item)
+	if item.posted > 0 then
+		addPair("On the auction house", format("%s, for %s", BreakUpLargeNumbers(item.posted), Money(item.postedMoney)))
+	end
+	if item.unsold > item.posted then addPair("Left and not posted", item.unsold - item.posted) end
 	if item.pending > 0 then addPair("Worth when crafted, what's left", Money(item.pending)) end
 	if item.forecast ~= 0 then
 		addPair("Forecast for what's done", signedMoney(item.forecast))
@@ -799,7 +818,8 @@ local function drawHeaders()
 	end
 end
 
--- One of the three totals: its number, a line under it, and what its tooltip says.
+-- One of the three totals: its number, a line under it, and what its tooltip
+-- says: a text, or a function that adds its lines to the tooltip.
 local function setTile(index, value, sub, note)
 	local tile = tiles[index]
 	tile.label = TILE_LABELS[tab][index]
@@ -809,26 +829,96 @@ local function setTile(index, value, sub, note)
 	tile.note = note
 end
 
--- Crafting's totals: the profit so far, what's waiting to sell, and the profit
--- if that sells too.
+-- The crafts with no materials cost on record, in a sentence: the totals leave
+-- them out, since they have no profit to add up. Nil when there are none.
+local function unknownText(total)
+	if total.unknown == 0 then return end
+	local text = format("%s crafts are left out of these totals: they were crafted while the Craftonomics panel "
+		.. "wasn't showing their recipe, so what their materials cost isn't known.", BreakUpLargeNumbers(total.unknown))
+	if total.unknownSold > 0 then
+		text = text .. format(" %s of them sold, for %s.", BreakUpLargeNumbers(total.unknownSold), Money(total.unknownMoney))
+	end
+	if total.unknownLeft > 0 then
+		text = text .. format(" %s are left, worth %s when crafted.", BreakUpLargeNumbers(total.unknownLeft),
+			Money(total.unknownWorth))
+	end
+	return text
+end
+
+-- Crafting's totals: the profit so far, what's on the auction house, and the
+-- profit if that sells too. Each counts only the crafts with a materials cost on
+-- record, so the numbers on it belong together, and its tooltip shows the sum.
 local function drawTiles(total, parts)
 	local off = ns.Ledger.Off(total)
+	local leftOut = unknownText(total)
+	local function addLeftOut(tip)
+		if not leftOut then return end
+		tip:AddLine(" ")
+		tip:AddLine(leftOut, 0.6, 0.6, 0.6, true)
+	end
+	local toCome = parts.ifAll
+
 	setTile(1, signedMoney(total.earned),
-		format("%s sold for %s", BreakUpLargeNumbers(total.sold), Money(total.money)),
-		"Orders when they're done, regular crafts as they sell, each minus its materials."
-			.. (total.unknown > 0 and format("\n\n%s crafts are left out: they were crafted while the Craftonomics panel wasn't showing their recipe, so what their materials cost isn't known.",
-				BreakUpLargeNumbers(total.unknown)) or "")
-			.. (off and (SHOWS_PROCS
-				and format("\n\nAgainst the forecast: leaving procs out, what's done made %s, forecast %s. Procs added %s.",
-					signedMoney(total.actual), signedMoney(total.forecast), procsText(total.procs))
-				or format("\n\nAgainst the forecast: what's done made %s, forecast %s.", signedMoney(total.actual),
-					signedMoney(total.forecast))) or ""))
-	setTile(2, Money(total.pending),
-		format("%s items, at their price when crafted", BreakUpLargeNumbers(total.unsold)),
-		"What you crafted and haven't sold or used yet, at what it was worth when you crafted it.")
-	setTile(3, signedMoney(total.earned + parts.ifAll), "profit so far, plus what's waiting",
-		"The profit so far, plus what the items still waiting would make if they sell for what they were worth when "
-			.. "you crafted them, minus their materials. Items with no price then aren't counted.")
+		format("%s sold for %s", BreakUpLargeNumbers(total.knownSold), Money(total.knownMoney)),
+		function(tip)
+			tip:AddLine("Orders when they're done, regular crafts as they sell, each minus its materials.", 1, 1, 1, true)
+			tip:AddLine(" ")
+			addPair("Sold for", Money(total.knownMoney))
+			addPair("Materials of what sold", Color("loss", "-" .. Money(total.soldCost)))
+			if math.abs(total.usedGain) >= 1 then addPair("Made by items used in your own crafts", signedMoney(total.usedGain)) end
+			addPair("Profit so far", signedMoney(total.earned))
+			if math.abs(total.usedGain) >= 1 then
+				tip:AddLine(" ")
+				tip:AddLine("An item you crafted and then used in another craft counts as sold to that craft, for what it "
+					.. "was worth then.", 0.6, 0.6, 0.6, true)
+			end
+			addLeftOut(tip)
+			if off then
+				tip:AddLine(" ")
+				tip:AddLine(SHOWS_PROCS
+					and format("Against the forecast: leaving procs out, what's done made %s, forecast %s. Procs added %s.",
+						signedMoney(total.actual), signedMoney(total.forecast), procsText(total.procs))
+					or format("Against the forecast: what's done made %s, forecast %s.", signedMoney(total.actual),
+						signedMoney(total.forecast)), 1, 1, 1, true)
+			end
+		end)
+
+	local kept = total.unsold - total.posted
+	setTile(2, plainMoney(total.knownPostedMoney),
+		total.knownPosted > 0 and format("%s items, cost %s", BreakUpLargeNumbers(total.knownPosted), Money(total.postedCost))
+			or "nothing posted",
+		function(tip)
+			tip:AddLine("What you crafted that's on the auction house right now, for what you posted it for.", 1, 1, 1, true)
+			tip:AddLine(" ")
+			addPair(format("Posted for (after %d%% AH cut)", ns.AH_CUT * 100), Money(total.knownPostedMoney))
+			addPair("Their materials", Color("loss", "-" .. Money(total.postedCost)))
+			addPair("They'd make", signedMoney(toCome))
+			if kept > 0 then
+				tip:AddLine(" ")
+				tip:AddLine(format("Not posted: %s items you still have, worth %s when crafted. They aren't counted "
+					.. "here.", BreakUpLargeNumbers(kept), Money(total.keptWorth)), 1, 1, 1, true)
+			end
+			addLeftOut(tip)
+			tip:AddLine(" ")
+			tip:AddLine(POSTED_NOTE, 0.6, 0.6, 0.6, true)
+		end)
+
+	setTile(3, signedMoney(total.earned + toCome),
+		format("so far %s %s posted", toCome < 0 and "-" or "+", Money(math.abs(toCome))),
+		function(tip)
+			tip:AddLine("The profit so far, plus what the items on the auction house make if they sell for what "
+				.. "you posted them for.", 1, 1, 1, true)
+			tip:AddLine(" ")
+			addPair("Profit so far", signedMoney(total.earned))
+			addPair("What's on the auction house would make", signedMoney(toCome))
+			addPair("If it all sells", signedMoney(total.earned + toCome))
+			if kept > 0 then
+				tip:AddLine(" ")
+				tip:AddLine(format("The %s items you still have and haven't posted aren't counted.",
+					BreakUpLargeNumbers(kept)), 0.6, 0.6, 0.6, true)
+			end
+			addLeftOut(tip)
+		end)
 end
 
 -- Purchases' totals: what you spent, how that compares with your price source at
@@ -857,7 +947,7 @@ end
 -- The bar of where the gold put into materials went, with what each part is
 -- under it.
 local function drawFlow(parts)
-	local all = parts.sold + parts.waiting + parts.used + parts.gone
+	local all = parts.sold + parts.posted + parts.kept + parts.used + parts.gone
 	flow.title:SetText(all > 0 and format("Where the %s you put into materials went", Money(all))
 		or "Where the gold you put into materials went")
 	flow.none:SetShown(all == 0)
@@ -879,7 +969,7 @@ local function drawFlow(parts)
 			math.floor(color[2] * 255), math.floor(color[3] * 255), part.name,
 			amount > 0 and Money(amount) or Color("muted", "-"))
 	end
-	flow.legend:SetText(all > 0 and table.concat(legend, "    ") or "")
+	flow.legend:SetText(all > 0 and table.concat(legend, "   ") or "")
 end
 
 -- The three things that stand out, each an item with a few words on it. A click
@@ -894,7 +984,8 @@ local function drawCards(items)
 	end
 	if stuck then
 		local days = daysWaiting(stuck)
-		words[2] = Color("muted", days >= 1 and format("%s made, none sold in %d days", BreakUpLargeNumbers(stuck.items), days)
+		words[2] = Color("muted", stuck.posted == 0 and format("%s made, none posted", BreakUpLargeNumbers(stuck.items))
+			or days >= 1 and format("%s made, none sold in %d days", BreakUpLargeNumbers(stuck.items), days)
 			or format("%s made, none sold yet", BreakUpLargeNumbers(stuck.items)))
 	end
 	if miss then
@@ -964,8 +1055,10 @@ function LedgerWindow.Render()
 				addAll(rows, months)
 			end
 		end
-		footer:SetText(Color("muted", format("%s crafts, %s items · Prices: %s", BreakUpLargeNumbers(total.crafts),
-			BreakUpLargeNumbers(total.items), ns.Prices.SourceLabel())))
+		footer:SetText(Color("muted", format("%s crafts, %s items%s · Prices: %s", BreakUpLargeNumbers(total.crafts),
+			BreakUpLargeNumbers(total.items),
+			total.unknown > 0 and format(" · %s with no cost on record, left out of the totals", BreakUpLargeNumbers(total.unknown)) or "",
+			ns.Prices.SourceLabel())))
 	else
 		local purchases = boughtInView()
 		rows = ns.Ledger.BoughtItems(purchases)
@@ -1086,7 +1179,7 @@ local function checkOwned()
 	local name = ns.Ranks.CharacterName(select(2, ns.Ranks.Me()) or "?")
 	StaticPopup_Show("CRAFTONOMICS_CHECK_LEDGER", format("%s items of %s kinds are on record as left, but %s doesn't "
 		.. "have them: not in bags or bank, and not put on the auction house these last days.\n\nWrite them off? They "
-		.. "leave Waiting to sell, and no profit or loss is counted for them. An item's right-click menu takes its "
+		.. "stop counting as left, and no profit or loss is counted for them. An item's right-click menu takes its "
 		.. "write-offs back.", BreakUpLargeNumbers(total), BreakUpLargeNumbers(#list), name), nil, list)
 end
 
@@ -1267,7 +1360,11 @@ local function createTiles()
 		tile:SetScript("OnEnter", function(self)
 			GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
 			GameTooltip:SetText(self.label)
-			GameTooltip:AddLine(self.note, 1, 1, 1, true)
+			if type(self.note) == "function" then
+				self.note(GameTooltip)
+			else
+				GameTooltip:AddLine(self.note, 1, 1, 1, true)
+			end
 			GameTooltip:Show()
 		end)
 		tile:SetScript("OnLeave", GameTooltip_Hide)

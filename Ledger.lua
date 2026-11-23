@@ -15,7 +15,12 @@ local SEP = "\t"
 local PRICE_SLACK = 1      -- copper a sale's price may differ from what was posted
 local CRAFT_SLACK = 3600   -- seconds a sale may seem to come before its craft (a mail's time is rough)
 local MONEY_FLOOR = 1      -- rounding of the amounts saved, in copper
-local POST_DAYS = 3        -- an auction posted longer ago than this isn't on the auction house any more
+-- How long an auction lasts, in hours, by the game's number for the time it was
+-- posted for: Retail's, or WoW Forever's. One posted before that was saved counts
+-- as up for the longest.
+local POST_HOURS = ns.QUALITY_CRAFTING and { 12, 24, 48 } or { 2, 8, 24 }
+local MAX_POST_HOURS = POST_HOURS[#POST_HOURS]
+local POST_DAYS = 3        -- what was posted longer ago than this isn't on the auction house or in the mail any more
 -- Why a craft of yours is gone without a sale, and which of a craft's counts that
 -- adds to: used yourself or destroyed (consumed), mailed, traded or put in the guild
 -- bank (given), or written off in the Ledger window (written). One sold to a vendor
@@ -52,7 +57,10 @@ Ledger.KIND_ORDER = { "craft", "patron", "personal", "guild", "public" }
 --             What a disenchant gave is a craft too, with Ledger.DISENCHANT for
 --             its recipe and no forecasts
 --     sales:  time, character, item name, qty, gold after the cut, price of one
---     posts:  time, character, itemID, rank, qty, price of one, item name
+--     posts:  time, character, itemID, rank, qty, price of one, item name, hours
+--             it was posted for (newer ones)
+--     pulled: time, character, itemID, qty, price of one: an auction of yours
+--             you cancelled
 --     used:   time, itemID, qty (your own crafts used up as materials), 1 when the
 --             craft they went into counted them at what they cost to make
 --     bought: time, character, itemID, rank, qty, gold spent, market price of one
@@ -146,9 +154,9 @@ local function parseBought(names, fields)
 end
 
 -- Everything in the saved days, unpacked and oldest first: crafts, sales, posts,
--- used, bought, gone.
+-- used, bought, gone, pulled.
 function Ledger.Unpack(db)
-	local crafts, sales, posts, used, bought, gone = {}, {}, {}, {}, {}, {}
+	local crafts, sales, posts, used, bought, gone, pulled = {}, {}, {}, {}, {}, {}, {}
 	local names = db.names
 	for _, day in pairs(db.days) do
 		eachLine(day.crafts, function(fields)
@@ -162,7 +170,12 @@ function Ledger.Unpack(db)
 		end)
 		eachLine(day.posts, function(fields)
 			posts[#posts + 1] = { t = tonumber(fields[1]), character = names[tonumber(fields[2])], itemID = tonumber(fields[3]),
-				rank = tonumber(fields[4]), qty = tonumber(fields[5]), unit = tonumber(fields[6]), name = fields[7] }
+				rank = tonumber(fields[4]), qty = tonumber(fields[5]), unit = tonumber(fields[6]), name = fields[7],
+				hours = tonumber(fields[8]) }
+		end)
+		eachLine(day.pulled, function(fields)
+			pulled[#pulled + 1] = { t = tonumber(fields[1]), character = names[tonumber(fields[2])], itemID = tonumber(fields[3]),
+				qty = tonumber(fields[4]), unit = tonumber(fields[5]) or 0 }
 		end)
 		eachLine(day.used, function(fields)
 			used[#used + 1] = { t = tonumber(fields[1]), itemID = tonumber(fields[2]), qty = tonumber(fields[3]),
@@ -181,7 +194,8 @@ function Ledger.Unpack(db)
 	table.sort(used, byTime)
 	table.sort(bought, byTime)
 	table.sort(gone, byTime)
-	return crafts, sales, posts, used, bought, gone
+	table.sort(pulled, byTime)
+	return crafts, sales, posts, used, bought, gone, pulled
 end
 
 ---------------------------------------------------------------------------
@@ -235,9 +249,12 @@ end
 -- left too: sold to a vendor counts as sold (vendored), the rest as consumed, given
 -- or written (see GONE_BUCKETS), which add up to gone. Returns the crafts, oldest
 -- first, what sold with neither on record ({ qty, money }), the purchases, oldest
--- first, and the posts, each with what's left of it unsold.
+-- first, and the posts, each with what's left of it unsold, and `up`: how many of
+-- it are on the auction house right now (not sold, not cancelled, its time not
+-- over). Each craft gets posted, how many of what's left of it are up, and
+-- postedMoney, what they're posted for after the cut.
 function Ledger.Analyze(db)
-	local crafts, sales, posts, used, bought, gone = Ledger.Unpack(db)
+	local crafts, sales, posts, used, bought, gone, pulled = Ledger.Unpack(db)
 	local byItem, byName, boughtByName = {}, {}, {}
 	for _, entry in ipairs(bought) do
 		entry.left, entry.resold, entry.resoldMoney = entry.qty, 0, 0
@@ -255,6 +272,7 @@ function Ledger.Analyze(db)
 		craft.left, craft.sold, craft.money, craft.used, craft.soldDays = 0, 0, 0, 0, 0
 		craft.usedAtCost, craft.disenchanted = 0, 0
 		craft.vendored, craft.consumed, craft.given, craft.written = 0, 0, 0, 0
+		craft.posted, craft.postedMoney = 0, 0
 		if craft.kind == "craft" and craft.itemID then
 			craft.left = craft.qty
 			local list = byItem[craft.itemID]
@@ -274,7 +292,7 @@ function Ledger.Analyze(db)
 			end
 		end
 	end
-	for _, post in ipairs(posts) do post.left = post.qty end
+	for _, post in ipairs(posts) do post.left, post.pulled, post.up = post.qty, 0, 0 end
 
 	-- In time order, so what was used up and what sold take from the same crafts.
 	local events = {}
@@ -287,6 +305,10 @@ function Ledger.Analyze(db)
 		entry.isGone = true
 		events[#events + 1] = entry
 	end
+	for _, entry in ipairs(pulled) do
+		entry.isPulled = true
+		events[#events + 1] = entry
+	end
 	table.sort(events, function(a, b) return a.t < b.t end)
 
 	local other = { qty = 0, money = 0 }
@@ -297,6 +319,19 @@ function Ledger.Analyze(db)
 				if event.atCost then craft.usedAtCost = craft.usedAtCost + amount end
 				if event.atCost and disenchants[event.t] then craft.disenchanted = craft.disenchanted + amount end
 			end)
+		elseif event.isPulled then
+			-- Cancelled: off the newest auction of it at that price that still had some up.
+			local qty = event.qty
+			for index = #posts, 1, -1 do
+				if qty <= 0 then break end
+				local post = posts[index]
+				if post.t <= event.t and post.character == event.character and post.itemID == event.itemID
+					and math.abs(post.unit - event.unit) <= PRICE_SLACK and post.left > post.pulled then
+					local amount = math.min(post.left - post.pulled, qty)
+					post.pulled = post.pulled + amount
+					qty = qty - amount
+				end
+			end
 		elseif event.isGone then
 			local each = event.money / event.qty
 			local bucket = GONE_BUCKETS[event.reason] or "written"
@@ -332,6 +367,26 @@ function Ledger.Analyze(db)
 			end)
 			other.qty = other.qty + unplaced
 			other.money = other.money + each * unplaced
+		end
+	end
+
+	-- What's on the auction house right now, and whose crafts those are: each
+	-- auction still up counts toward that character's oldest crafts of the item
+	-- with some left.
+	local now = time()
+	local keep = (ns.db and ns.db.ahCut) and (1 - ns.AH_CUT) or 1
+	for _, post in ipairs(posts) do
+		if now < post.t + (post.hours or MAX_POST_HOURS) * 3600 then post.up = math.max(post.left - post.pulled, 0) end
+		local qty = post.up
+		for _, craft in ipairs(qty > 0 and byItem[post.itemID] or {}) do
+			if qty <= 0 then break end
+			local free = craft.left - craft.posted
+			if free > 0 and craft.character == post.character and (post.rank == 0 or craft.rank == post.rank) then
+				local amount = math.min(free, qty)
+				craft.posted = craft.posted + amount
+				craft.postedMoney = craft.postedMoney + amount * post.unit * keep
+				qty = qty - amount
+			end
 		end
 	end
 
@@ -430,11 +485,50 @@ end
 -- forecast for all of them, procs what they really added; actual and forecast only
 -- count what's done, without procs, so they can be compared. Unknown is how many
 -- have no materials cost on record, and so no profit.
+--
+-- Posted and postedMoney are what's on the auction house of what's left, and what
+-- it's posted for after the cut; keptWorth is what the rest of what's left was
+-- worth when crafted.
+--
+-- The crafts with a cost on record add up on their own: knownSold of them sold
+-- for knownMoney, their materials cost soldCost, and usedGain is what the ones
+-- used in your own crafts made (counted as sold to that craft for what they were
+-- worth then), so earned = knownMoney - soldCost + usedGain. knownPosted of
+-- them are on the auction house for knownPostedMoney, and those cost postedCost.
+-- The ones with no cost on record: unknownSold sold for unknownMoney, and
+-- unknownLeft are left, worth unknownWorth when crafted.
 function Ledger.Summarize(crafts)
 	local total = { crafts = 0, items = 0, cost = 0, earned = 0, pending = 0, unsold = 0, sold = 0, money = 0,
 		expected = 0, procs = 0, actual = 0, forecast = 0, unknown = 0, used = 0, usedAtCost = 0, disenchanted = 0,
-		gone = 0, vendored = 0, consumed = 0, given = 0, written = 0 }
+		gone = 0, vendored = 0, consumed = 0, given = 0, written = 0,
+		posted = 0, postedMoney = 0, keptWorth = 0,
+		knownSold = 0, knownMoney = 0, soldCost = 0, usedGain = 0, knownPosted = 0, knownPostedMoney = 0, postedCost = 0,
+		unknownSold = 0, unknownMoney = 0, unknownLeft = 0, unknownWorth = 0 }
 	for _, craft in ipairs(crafts) do
+		local posted, postedMoney = craft.posted or 0, craft.postedMoney or 0
+		total.posted = total.posted + posted
+		total.postedMoney = total.postedMoney + postedMoney
+		total.keptWorth = total.keptWorth + (craft.left - posted) * (craft.unit or 0)
+		if craft.noCost then
+			total.unknownSold = total.unknownSold + craft.sold
+			total.unknownMoney = total.unknownMoney + craft.money
+			total.unknownLeft = total.unknownLeft + craft.left
+			total.unknownWorth = total.unknownWorth + craft.pending
+		elseif craft.kind == "craft" and craft.itemID then
+			local share = craft.cost / craft.qty
+			total.knownSold = total.knownSold + craft.sold
+			total.knownMoney = total.knownMoney + craft.money
+			total.soldCost = total.soldCost + share * craft.sold
+			total.usedGain = total.usedGain + (craft.unit - share) * (craft.used - craft.usedAtCost)
+			total.knownPosted = total.knownPosted + posted
+			total.knownPostedMoney = total.knownPostedMoney + postedMoney
+			total.postedCost = total.postedCost + share * posted
+		else
+			-- An order, paid when it's done, or a craft that made nothing to sell.
+			total.knownSold = total.knownSold + craft.sold
+			total.knownMoney = total.knownMoney + craft.earned + craft.cost
+			total.soldCost = total.soldCost + craft.cost
+		end
 		total.crafts = total.crafts + 1
 		total.used = total.used + craft.used
 		total.usedAtCost = total.usedAtCost + craft.usedAtCost
@@ -488,7 +582,7 @@ function Ledger.Merge(crafts)
 			row.count = row.count + 1
 			row.unit = row.unit + craft.unit * craft.qty
 			for _, field in ipairs({ "qty", "cost", "forecast", "profit", "left", "sold", "money", "used", "usedAtCost", "soldDays", "earned", "pending",
-				"expected", "procGain", "gone", "vendored", "consumed", "given", "written", "disenchanted" }) do
+				"expected", "procGain", "gone", "vendored", "consumed", "given", "written", "disenchanted", "posted", "postedMoney" }) do
 				row[field] = (row[field] or 0) + (craft[field] or 0)
 			end
 		end
@@ -744,6 +838,8 @@ function Ledger.Missing()
 	for _, craft in ipairs(crafts) do
 		if craft.character == mine and craft.left > 0 then left[craft.itemID] = (left[craft.itemID] or 0) + craft.left end
 	end
+	-- An auction that ran out or was cancelled comes back by mail, so one posted
+	-- these last days counts whether or not it's still up.
 	local since = time() - POST_DAYS * DAY
 	for _, post in ipairs(posts) do
 		if post.character == mine and post.t >= since and post.left > 0 then
@@ -791,14 +887,42 @@ function Ledger.TakeBack(itemID)
 	onChange()
 end
 
--- Something you put on the auction house. Only your own crafts matter.
-local function recordPost(location, qty, unit)
+-- Something you put on the auction house, for `duration` (the game's number for
+-- how long). Only your own crafts matter.
+local function recordPost(location, qty, unit, duration)
 	if not (saved and location and unit and (qty or 0) > 0) then return end
 	local ok, link = pcall(C_Item.GetItemLink, location)
 	if not (ok and link) then return end
 	local itemID = C_Item.GetItemInfoInstant(link)
 	if not (itemID and saved.items[itemID]) then return end
-	append("posts", time(), indexOf(me()), itemID, rankOf(link), qty, whole(unit), nameIn(link) or saved.items[itemID])
+	append("posts", time(), indexOf(me()), itemID, rankOf(link), qty, whole(unit), nameIn(link) or saved.items[itemID],
+		POST_HOURS[duration] or MAX_POST_HOURS)
+	onChange()
+end
+
+-- Your auctions as the game last listed them, the ones not sold yet: auctionID ->
+-- { itemID, qty, unit }, of your own crafts. So a cancelled one is known by more
+-- than its number.
+local ownAuctions = {}
+
+local function readOwnAuctions()
+	for index = 1, C_AuctionHouse.GetNumOwnedAuctions() do
+		local info = C_AuctionHouse.GetOwnedAuctionInfo(index)
+		local itemID = info and info.itemKey and info.itemKey.itemID
+		if itemID and info.auctionID and saved.items[itemID] and info.status ~= Enum.AuctionStatus.Sold then
+			ownAuctions[info.auctionID] = { itemID = itemID, qty = info.quantity or 1,
+				unit = info.buyoutAmount or info.bidAmount or 0 }
+		end
+	end
+end
+
+-- You cancelled an auction: it isn't on the auction house any more.
+local function recordCancel(auctionID)
+	local auction = auctionID and ownAuctions[auctionID]
+	if not (saved and auction) then return end
+	ownAuctions[auctionID] = nil
+	append("pulled", time(), indexOf(me()), auction.itemID, auction.qty, whole(auction.unit))
+	onChange()
 end
 
 -- Something you bought. `spent` is the gold it took; nil leaves it out.
@@ -866,11 +990,11 @@ end
 
 local function watchPosts()
 	if not C_AuctionHouse then return end
-	hooksecurefunc(C_AuctionHouse, "PostItem", function(location, _, qty, bid, buyout)
-		recordPost(location, qty, buyout or bid)
+	hooksecurefunc(C_AuctionHouse, "PostItem", function(location, duration, qty, bid, buyout)
+		recordPost(location, qty, buyout or bid, duration)
 	end)
-	hooksecurefunc(C_AuctionHouse, "PostCommodity", function(location, _, qty, unit)
-		recordPost(location, qty, unit)
+	hooksecurefunc(C_AuctionHouse, "PostCommodity", function(location, duration, qty, unit)
+		recordPost(location, qty, unit, duration)
 	end)
 end
 
@@ -1006,7 +1130,17 @@ function Ledger.Init()
 	local events = CreateFrame("Frame")
 	watchPurchases(events)
 	events:RegisterEvent("PLAYER_LOGIN")
+	-- Guarded: not every version of the game has these.
+	pcall(events.RegisterEvent, events, "OWNED_AUCTIONS_UPDATED")
+	pcall(events.RegisterEvent, events, "AUCTION_CANCELED")
 	events:SetScript("OnEvent", function(_, event, ...)
+		if event == "OWNED_AUCTIONS_UPDATED" then
+			pcall(readOwnAuctions)
+			return
+		elseif event == "AUCTION_CANCELED" then
+			recordCancel((...))
+			return
+		end
 		if event ~= "PLAYER_LOGIN" then
 			onPurchaseEvent(event, ...)
 			return

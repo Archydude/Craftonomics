@@ -1,5 +1,9 @@
 # Changelog
 
+## 5.12.1
+- **Ledger: On the auction house.** The second total, Waiting to sell, is now **On the auction house**: only what you posted and hasn't sold, for what you posted it for after the cut. What you still have and haven't posted is **Not posted**. The bar splits into Sold, Posted, Not posted, Used and Gone, each row has a **Posted** column, and an item's status says **On the auction house** or **Not posted**. An auction counts until it sells, you cancel it or its time is over. Auctions from before this version count as up for the longest posting time, so the first day can be off.
+- **Ledger: totals that add up.** Profit so far, On the auction house and If it all sells now count the same crafts: the ones with a materials cost on record. **If it all sells** is the profit so far plus what the posted items would make. Hover a total for its sum line by line. Crafts with no cost on record are left out of the totals; the footer says how many, and the tooltips what they sold for and what's left of them.
+
 ## 5.12.0
 - **Max button on the panel:** left of the Craft button, **Max** starts as many crafts as your materials make, as the game's Create All button does. It says how many, like **Max 30**, and is greyed out when the game's button is.
 - Fixed: on the panel, a material you had enough of showed no tooltip. Every material row now shows its item on hover.

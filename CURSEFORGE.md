@@ -37,7 +37,7 @@ Craftonomics, formerly **Craft Profit**, answers in gold: **profit or loss?** A 
 - **Best crafts**: every recipe ranked by profit, across all your characters
 - **Profit on every recipe** in the game's own recipe list
 - **All recipes**: every profession's recipes, as a list or a **trend heatmap**
-- **Ledger**: your profit so far, what's waiting to sell, and what you vendored, used, disenchanted or gave away
+- **Ledger**: your profit so far, what's on the auction house, and what you vendored, used, disenchanted or gave away
 - **Auction house window**: shopping list, selling, cancelling undercut auctions
 - **No price addon needed**: its own price scan, **TradeSkillMaster** or **Auctionator** prices, or whichever is **freshest**
 - **Patron orders**: profit, rewards and missing materials in Blizzard's Patron tab, crafted from there
@@ -74,18 +74,22 @@ This addon was made with AI.
 ## B. Upload File form
 
 **Files:** two, each uploaded with only its own game versions (why is in [UPLOADING.md](../UPLOADING.md)). The display name, release type and changelog are the same for both.
-- `dist\Craftonomics-5.12.0-retail.zip`: Retail `12.1.5`
-- `dist\Craftonomics-5.12.0-forever.zip`: WoW Forever `1.60.1`
+- `dist\Craftonomics-5.12.1-retail.zip`: Retail `12.1.5`
+- `dist\Craftonomics-5.12.1-forever.zip`: WoW Forever `1.60.1`
 
 **Display name**
 ```
-Craftonomics 5.12.0
+Craftonomics 5.12.1
 ```
 
 **Release type:** `Release`
 
 **Changelog** (paste only the newest part; paste older parts too if they never went up)
 ```markdown
+5.12.1
+- **Ledger: On the auction house.** The second total, Waiting to sell, is now **On the auction house**: only what you posted and hasn't sold, for what you posted it for after the cut. What you still have and haven't posted is **Not posted**. The bar splits into Sold, Posted, Not posted, Used and Gone, each row has a **Posted** column, and an item's status says **On the auction house** or **Not posted**. An auction counts until it sells, you cancel it or its time is over. Auctions from before this version count as up for the longest posting time, so the first day can be off.
+- **Ledger: totals that add up.** Profit so far, On the auction house and If it all sells now count the same crafts: the ones with a materials cost on record. **If it all sells** is the profit so far plus what the posted items would make. Hover a total for its sum line by line. Crafts with no cost on record are left out of the totals; the footer says how many, and the tooltips what they sold for and what's left of them.
+
 5.12.0
 - **Max button on the panel:** left of the Craft button, **Max** starts as many crafts as your materials make, as the game's Create All button does. It says how many, like **Max 30**, and is greyed out when the game's button is.
 - Fixed: on the panel, a material you had enough of showed no tooltip. Every material row now shows its item on hover.
