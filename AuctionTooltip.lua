@@ -147,10 +147,13 @@ local function onItem(tooltip, data)
 	-- How far its market value is from its historical price, from TSM (nil without TSM).
 	local trend
 	if postable and db.tipTrend then trend = ns.Prices.Trend(link or ("item:" .. itemID)) end
-	-- How far its lowest auction is from its market value, from TSM (nil without
-	-- TSM, or with no auction up).
-	local lowest
-	if postable and db.tipLowest then lowest = ns.Prices.LowestVsMarket(link or ("item:" .. itemID)) end
+	-- How far its lowest auction is from TSM's market value (nil without TSM, or
+	-- with no auction up), and whose lowest auction that is: TSM's, or a scan's
+	-- with Freshest prices.
+	local lowest, lowestFrom
+	if postable and db.tipLowest then
+		lowest, lowestFrom = ns.Prices.LowestVsMarket(link or ("item:" .. itemID), itemID)
+	end
 	-- For a material: the most profitable recipe this character knows that takes it.
 	-- Only when it makes gold: the best of recipes that all lose it is nothing to craft.
 	local best = db.tipBestCraft and ns.BestCrafts.BestWith(itemID) or nil
@@ -170,7 +173,9 @@ local function onItem(tooltip, data)
 	if rate then tooltip:AddDoubleLine("TSM Sale Rate", ns.Format.SaleRate(rate), 1, 0.82, 0, 1, 1, 1) end
 	if trend then tooltip:AddDoubleLine("TSM Trend", ns.Format.Trend(trend), 1, 0.82, 0, 1, 1, 1) end
 	if lowest then
-		tooltip:AddDoubleLine("TSM Lowest vs Market", ns.Format.LowestVsMarket(lowest), 1, 0.82, 0, 1, 1, 1)
+		-- A scan's lowest auction isn't TSM's: only the market value is.
+		local label = lowestFrom == "tsm" and "TSM Lowest vs Market" or "Lowest vs TSM Market"
+		tooltip:AddDoubleLine(label, ns.Format.LowestVsMarket(lowest), 1, 0.82, 0, 1, 1, 1)
 	end
 	if list then
 		tooltip:AddDoubleLine("AH Deposit " .. table.concat(DURATIONS, " / ") .. stack, table.concat(list, " / "),

@@ -524,6 +524,8 @@ function Options.Create()
 		"Cheap -18%: the lowest auction is 18% below the market value.\n" ..
 		"Expensive +12%: it's 12% above it.\n" ..
 		"Even: within 3% of the market value.\n\n" ..
+		"With Freshest prices as your Price addon, the lowest auction is the newest one known. When that's " ..
+		"from a scan and not from TSM, the line is called Lowest vs TSM Market.\n\n" ..
 		"Only while someone has an auction up. Not on items you can't post, like soulbound ones.")
 	checkbox("tipBestCraft", "Show best craft",
 		"On the tooltip of a material: Best Craft, the most profitable recipe this character knows that takes it, " ..

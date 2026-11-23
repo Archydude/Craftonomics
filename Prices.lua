@@ -144,9 +144,11 @@ local function freshMaterial(itemID)
 	end
 end
 
--- The same for a crafted item, by its link.
-local function freshSale(link, itemID)
-	local list = freshFor(ns.db.saleSource)
+-- The same for a crafted item, by its link. `tsmSource` is TSM's price type to
+-- go by: the one picked for crafted items unless given.
+local function freshSale(link, itemID, tsmSource)
+	tsmSource = tsmSource or ns.db.saleSource
+	local list = freshFor(tsmSource)
 	if not list then return end
 	local checked = ns.PriceScan.SaleChecked(link, itemID)
 	if checked and checked <= list[1].seconds then
@@ -157,7 +159,7 @@ local function freshSale(link, itemID)
 		local value
 		if source.name == "tsm" then
 			local ok, itemString = pcall(TSM_API.ToItemString, link)
-			value = ok and itemString and tsmValue(ns.db.saleSource, itemString)
+			value = ok and itemString and tsmValue(tsmSource, itemString)
 		elseif source.name == "own" then
 			value = ns.PriceScan.SaleInLastScan(link, itemID) and ns.PriceScan.Sale(link, itemID)
 		else
@@ -502,17 +504,22 @@ function Prices.MarketAndHistorical(link)
 	return market, historical
 end
 
--- How far an item's lowest auction on your realm is from its market value, from
--- TSM, in whole percent (-18 for 18% below it), or nil without TSM or either
--- price (no lowest auction when nobody has one up).
-function Prices.LowestVsMarket(link)
+-- How far an item's lowest auction on your realm is from its market value, in
+-- whole percent (-18 for 18% below it), and where the lowest auction came from:
+-- "tsm", "own" (Craftonomics' scan) or "auctionator". The market value is
+-- TSM's. The lowest auction is TSM's too, or with Freshest prices the newest
+-- one known, which can be a scan's. Nil without TSM or either price (no lowest
+-- auction when nobody has one up).
+function Prices.LowestVsMarket(link, itemID)
 	if not (TSM_API and TSM_API.GetCustomPriceValue) then return end
 	local ok, itemString = pcall(TSM_API.ToItemString, link)
 	if not (ok and itemString) then return end
 	local market = tsmValue("dbmarket", itemString)
-	local lowest = market and tsmValue("dbminbuyout", itemString)
+	if not market then return end
+	local lowest, from = freshSale(link, itemID, LOWEST)
+	if not lowest then lowest, from = tsmValue(LOWEST, itemString), "tsm" end
 	if not lowest then return end
-	return math.floor((lowest - market) * 100 / market + 0.5)
+	return math.floor((lowest - market) * 100 / market + 0.5), from
 end
 
 -- How many days ago Auctionator last saw an item on the auction house (0 is

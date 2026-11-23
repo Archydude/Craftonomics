@@ -19,7 +19,9 @@ local TOP = 28           -- under the title bar
 local BOTTOM = 62        -- room for the status line and the buttons
 local INSET_PAD = 4      -- list frame to the rows
 local SCROLLBAR_ROOM = 22
-local ROW_HEIGHT = 40    -- two lines: the item, then the prices
+local ROW_HEIGHT = 56    -- three lines: the item, your price, then what others ask
+local LINE_TOP = 4       -- row's top to its first line
+local LINE_STEP = 16     -- one line's top to the next one's
 local CANCEL_WIDTH = 64
 -- How long a cancel waits for the auction house before the button comes back, in seconds.
 local CANCEL_WAIT = 6
@@ -212,20 +214,28 @@ local function createRow(row)
 	row.cancel:SetScript("OnClick", function() cancel(row.data) end)
 	row.cancel:SetScript("OnEnter", cancelTooltip)
 	row.cancel:SetScript("OnLeave", GameTooltip_Hide)
+	-- How it stands and the time left, at the ends of the first two lines.
+	local right = -(4 + CANCEL_WIDTH + 8)
 	row.state = row:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-	row.state:SetPoint("TOPRIGHT", row.cancel, "TOPLEFT", -8, 6)
+	row.state:SetPoint("TOPRIGHT", right, -LINE_TOP)
 	row.time = row:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-	row.time:SetPoint("BOTTOMRIGHT", row.cancel, "BOTTOMLEFT", -8, -6)
+	row.time:SetPoint("TOPRIGHT", right, -(LINE_TOP + LINE_STEP))
 	row.name = row:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-	row.name:SetPoint("TOPLEFT", 6, -3)
+	row.name:SetPoint("TOPLEFT", 6, -LINE_TOP)
 	row.name:SetPoint("RIGHT", row.state, "LEFT", -6, 0)
 	row.name:SetJustifyH("LEFT")
 	row.name:SetWordWrap(false)
+	-- Your price, and under it what others ask.
 	row.prices = row:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-	row.prices:SetPoint("BOTTOMLEFT", 6, 5)
+	row.prices:SetPoint("TOPLEFT", 6, -(LINE_TOP + LINE_STEP))
 	row.prices:SetPoint("RIGHT", row.time, "LEFT", -6, 0)
 	row.prices:SetJustifyH("LEFT")
 	row.prices:SetWordWrap(false)
+	row.others = row:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+	row.others:SetPoint("TOPLEFT", 6, -(LINE_TOP + 2 * LINE_STEP))
+	row.others:SetPoint("RIGHT", right, 0)
+	row.others:SetJustifyH("LEFT")
+	row.others:SetWordWrap(false)
 	row:SetScript("OnClick", rowClick)
 	row:SetScript("OnEnter", rowTooltip)
 	row:SetScript("OnLeave", GameTooltip_Hide)
@@ -238,7 +248,7 @@ local function drawRow(row, auction)
 	row.name:SetText(ns.Format.Sellable(auction.itemID, auction.link, auction.qty))
 	row.state:SetText(STATE_TEXT[state])
 	row.time:SetText(Color("muted", auction.sold and "" or timeText(auction.seconds)))
-	local prices
+	local prices, others = "", ""
 	if auction.price then
 		prices = "Yours " .. exact(auction.price)
 		local check = checks[auction.key]
@@ -246,18 +256,19 @@ local function drawRow(row, auction)
 			local ahead, more = aheadOf(auction, check)
 			if state == "notFirst" then
 				-- Nobody asks less, but others at your price are listed before yours.
-				prices = prices .. format("  ·  %s%s before yours at this price", BreakUpLargeNumbers(ahead), more and "+" or "")
+				others = format("%s%s before yours at this price", BreakUpLargeNumbers(ahead), more and "+" or "")
 			else
-				prices = prices .. (check.lowest and ("  ·  lowest other " .. exact(check.lowest)) or "  ·  no others")
+				others = check.lowest and ("Lowest other " .. exact(check.lowest)) or "No others"
 				if ahead > 0 then
-					prices = prices .. format("  ·  %s%s before yours", BreakUpLargeNumbers(ahead), more and "+" or "")
+					others = others .. format("  ·  %s%s before yours", BreakUpLargeNumbers(ahead), more and "+" or "")
 				end
 			end
 		end
-	else
-		prices = auction.bid and ("Bid " .. exact(auction.bid)) or ""
+	elseif auction.bid then
+		prices = "Bid " .. exact(auction.bid)
 	end
 	row.prices:SetText(Color("muted", prices))
+	row.others:SetText(Color("muted", others))
 	row.cancel:SetShown(not auction.sold)
 	row.cancel:SetEnabled(not cancelling[auction.id])
 	row.cancel:SetText(cancelling[auction.id] and "..." or "Cancel")
