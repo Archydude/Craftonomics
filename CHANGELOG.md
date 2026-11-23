@@ -1,5 +1,8 @@
 # Changelog
 
+## 5.13.0
+- **Recipe profit on recipe tooltips:** the tooltip of a recipe you can learn (a pattern, plan, schematic...) gets a **Recipe Profit** line: what one craft of the recipe it teaches makes, in green, or loses, in red, whether or not you know the recipe. Under it is what the recipe makes. It's priced as the All recipes window prices it: the materials bought and what the craft makes sold; on Retail at the rank picked in that window. Its return and TSM sale rate show under it as **Best craft's return** and **Best craft's sale rate** say. Recipes with no price for what they make or for one of their materials have no line, nor do ones that make an item bound when picked up, nor enchanting formulas on WoW Forever. Turn it off with **Show recipe profit** on the Tooltips options page.
+
 ## 5.12.2
 - **Lowest vs market follows Freshest prices:** with **Freshest prices** as your Price addon, the tooltip's lowest vs market line now compares the newest lowest price known with TSM's market value: TSM's, a scan's, or one you just looked up at the auction house. When that price comes from a scan and not from TSM, the line is called **Lowest vs TSM Market**.
 - **My auctions: rows you can read.** The grey line under each auction was cut off. Each row now has your price on one line, and under it what others ask and how many come before yours.

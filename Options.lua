@@ -563,6 +563,15 @@ function Options.Create()
 	}, "With TSM, under the Best Craft lines: the TSM sale rate of what the recipe makes.\n\n" ..
 		"While holding Shift: in your bags it shows as you press Shift; anywhere else, hold Shift first, then " ..
 		"hover the item.")
+	checkbox("tipRecipe", "Show recipe profit",
+		"On the tooltip of a recipe you can learn (a pattern, plan, schematic...): Recipe Profit, what one craft " ..
+		"of the recipe it teaches makes, in green, or loses, in red, with what it makes under it. Whether or not " ..
+		"you know the recipe.\n\n" ..
+		"It's priced as the All recipes window prices it: the materials bought and what the craft makes sold" ..
+		(quality and ", at the rank picked in that window" or "") .. ". " ..
+		"Its return and TSM sale rate show under it as Best craft's return and Best craft's sale rate say.\n\n" ..
+		"Not on recipes with no price for what they make or for one of their materials, or that make an item " ..
+		"that's bound when picked up" .. (quality and "." or ", or on enchanting formulas: an enchant makes nothing to sell."))
 	checkbox("priceTooltip", "Show saved TSM prices",
 		"On characters without TSM that use TSM prices saved by another character (see Save TSM prices for alts, " ..
 		"on the main page): one line with the item's price, as Craftonomics prices it, and whose " ..

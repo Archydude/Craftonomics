@@ -13,6 +13,9 @@
 -- ranks is priced at its highest rank with the best materials, or at its lowest
 -- with the cheapest (ns.db.recipesRank): nobody's skill is there to say which rank
 -- a craft would come out at.
+--
+-- A recipe item's tooltip (a pattern, plan, schematic...) asks for the one recipe
+-- it teaches, priced the same way, without the window (AllRecipes.Scroll).
 local _, ns = ...
 
 local AllRecipes = {}
@@ -285,7 +288,8 @@ local function priceMaterials(row, buy)
 	local cost, unpriced = 0, 0
 	for _, material in ipairs(row.materials) do
 		if material.options then material.itemID = pickMaterial(material, buy, row.highest) end
-		materialName(material.itemID) -- asked for now, so the search has it by the time you type
+		-- Asked for now, so the window's search has it by the time you type.
+		if materialNames then materialName(material.itemID) end
 		local price = buy(material.itemID)
 		if price then cost = cost + price * material.qty else unpriced = unpriced + 1 end
 	end
@@ -415,6 +419,68 @@ function AllRecipes.ItemArrived(itemID)
 		if not row.each and run and run.buy then priceRow(row, run.buy, run.keep) end
 	end
 	return true
+end
+
+---------------------------------------------------------------------------
+-- Recipe items
+---------------------------------------------------------------------------
+
+-- How long a recipe item's craft keeps its prices, in seconds: a tooltip is drawn
+-- again many times while it's up. Shorter while it has no profit to show, as the
+-- game may still be loading what it makes.
+local SCROLL_PRICED, SCROLL_UNPRICED = 5, 1
+-- The recipe items asked about so far: itemID -> { recipeID, professionID, row =
+-- its recipe as a row (see `rows`), highest = the rank choice it was made with,
+-- due = when it's priced again }, or false for an item that teaches none of the
+-- recipes here.
+local scrolls = {}
+
+-- The recipe an item teaches and its profession, from the data, or nil.
+local function scrollRecipe(itemID)
+	for professionID, packed in pairs(ns.RECIPE_SCROLLS or {}) do
+		-- "item:recipe,item:recipe...": the item's number, whole, then its recipe's.
+		local recipeID = packed:match("%f[%d]" .. itemID .. ":(%d+)")
+		if recipeID then return tonumber(recipeID), professionID end
+	end
+end
+
+-- That recipe as a row, or nil when it makes nothing to sell.
+local function scrollRow(recipeID, professionID, highest)
+	local profession = AllRecipes.ProfessionName(professionID)
+	if ns.QUALITY_CRAFTING then return retailRow(recipeID, professionID, profession, highest) end
+	local start = recipeID .. ":"
+	for _, text in ipairs(ns.ALL_RECIPES[professionID] or {}) do
+		if text:sub(1, #start) == start then return unpackRecipe(text, professionID, profession) end
+	end
+end
+
+-- For a recipe item (a pattern, plan, schematic...): the recipe it teaches as a
+-- priced row (see `rows`: net is one craft's profit, with cost, itemID, name,
+-- professionID and saleRate), whether or not you know the recipe. Nil for any other
+-- item, and while the recipe has no profit to show: no price for what it makes or
+-- for one of its materials, or nothing made to sell (an enchant on WoW Forever).
+function AllRecipes.Scroll(itemID)
+	local scroll = scrolls[itemID]
+	if scroll == nil then
+		local recipeID, professionID = scrollRecipe(itemID)
+		scroll = recipeID and { recipeID = recipeID, professionID = professionID } or false
+		scrolls[itemID] = scroll
+	end
+	if not scroll then return end
+	local now = GetTime()
+	if not scroll.due or now >= scroll.due then
+		-- Asked of the game on Retail, which can change its mind as it loads.
+		local highest = AllRecipes.Highest()
+		if not scroll.row or scroll.highest ~= highest then
+			local ok, row = pcall(scrollRow, scroll.recipeID, scroll.professionID, highest)
+			scroll.row, scroll.highest = ok and row or nil, highest
+		end
+		local row = scroll.row
+		if row then priceRow(row, ns.Prices.Buy, ns.db.ahCut and (1 - ns.AH_CUT) or 1) end
+		scroll.due = now + ((row and row.net) and SCROLL_PRICED or SCROLL_UNPRICED)
+	end
+	local row = scroll.row
+	return row and row.net and row or nil
 end
 
 -- Stops pricing and lets the recipes go: the window closed.

@@ -48,7 +48,7 @@ The sale price at the rank you'll get, minus the 5% cut and your materials. On o
 ### What should I craft?
 **Best crafts** has a **Return** column, and with TSM each item's **sale rate** and **trend**.
 
-**All recipes** lists every profession's sellable recipes with profit. With TSM, switch it to a **heatmap**: tiles colored by trend, sized by gold sold per day.
+With TSM, switch **All recipes** to a **heatmap**: tiles colored by trend, sized by gold sold per day.
 
 ### At the auction house
 **Shopping list**: click a material to see how many to buy. **Sell**: a price and sale rate on every bag item. **My auctions**: cancel the undercut ones.
@@ -57,7 +57,7 @@ The sale price at the rank you'll get, minus the 5% cut and your materials. On o
 Best crafts shows what a **skill point** costs. Materials in your **bank** are marked on the panel. **Craft myself** prices materials at what crafting them costs, and **Cheapest way** crafts or buys each, whichever is cheaper.
 
 ### Item tooltips
-Vendor and auction prices and the **AH deposit**, plus with TSM the **sale rate**, **trend** and whether the lowest auction is **cheap** or **expensive**. On a material: the **best craft** it leads to, chains of crafts included, with its profit and return.
+Vendor and auction prices and the **AH deposit**, plus with TSM the **sale rate**, **trend** and whether the lowest auction is **cheap** or **expensive**. On a material: the **best craft** it leads to, chains included, with profit and return. On a pattern, plan or other recipe: the **profit** of the craft it teaches.
 
 ### Good to know
 **TSM prices for alts** that keep TSM turned off. Type **/craftonomics** for options.
@@ -74,18 +74,21 @@ This addon was made with AI.
 ## B. Upload File form
 
 **Files:** two, each uploaded with only its own game versions (why is in [UPLOADING.md](../UPLOADING.md)). The display name, release type and changelog are the same for both.
-- `dist\Craftonomics-5.12.2-retail.zip`: Retail `12.1.5`
-- `dist\Craftonomics-5.12.2-forever.zip`: WoW Forever `1.60.1`
+- `dist\Craftonomics-5.13.0-retail.zip`: Retail `12.1.5`
+- `dist\Craftonomics-5.13.0-forever.zip`: WoW Forever `1.60.1`
 
 **Display name**
 ```
-Craftonomics 5.12.2
+Craftonomics 5.13.0
 ```
 
 **Release type:** `Release`
 
 **Changelog** (paste only the newest part; paste older parts too if they never went up)
 ```markdown
+5.13.0
+- **Recipe profit on recipe tooltips:** the tooltip of a recipe you can learn (a pattern, plan, schematic...) gets a **Recipe Profit** line: what one craft of the recipe it teaches makes, in green, or loses, in red, whether or not you know the recipe. Under it is what the recipe makes. It's priced as the All recipes window prices it: the materials bought and what the craft makes sold; on Retail at the rank picked in that window. Its return and TSM sale rate show under it as **Best craft's return** and **Best craft's sale rate** say. Recipes with no price for what they make or for one of their materials have no line, nor do ones that make an item bound when picked up, nor enchanting formulas on WoW Forever. Turn it off with **Show recipe profit** on the Tooltips options page.
+
 5.12.2
 - **Lowest vs market follows Freshest prices:** with **Freshest prices** as your Price addon, the tooltip's lowest vs market line now compares the newest lowest price known with TSM's market value: TSM's, a scan's, or one you just looked up at the auction house. When that price comes from a scan and not from TSM, the line is called **Lowest vs TSM Market**.
 - **My auctions: rows you can read.** The grey line under each auction was cut off. Each row now has your price on one line, and under it what others ask and how many come before yours.

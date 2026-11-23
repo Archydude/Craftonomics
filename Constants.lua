@@ -145,6 +145,7 @@ ns.DEFAULTS = {
 	tipBestRate = "shift", -- that recipe's TSM sale rate under it: while holding "shift" | "always" | "never"
 	tipBestWeigh = false, -- picking that recipe, a profit counts for less the worse what it makes sells (TSM sale rate under 70%)
 	tipBestShowReturn = "shift", -- that recipe's return under it: while holding "shift" | "always" | "never"
+	tipRecipe = true,     -- item tooltips: for a recipe item (pattern, plan...), what one craft of its recipe makes
 	tipBestReturn = false, -- picking that recipe, a profit counts for more or less with its return on the materials' cost
 	rankConcentration = true, -- add the concentration that rank takes
 	rankCharacters = "all", -- whose ranks: "all" your characters | "current" one

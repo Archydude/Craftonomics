@@ -106,11 +106,19 @@ local function professionIcon(professionID)
 	return icon
 end
 
+-- Whether a line with an Always / Never / While holding Shift choice shows now.
+local function shown(choice)
+	return choice == "always" or (choice ~= "never" and IsShiftKeyDown())
+end
+
+-- The game's number for recipe items: patterns, plans, schematics...
+local RECIPE_CLASS = Enum.ItemClass and Enum.ItemClass.Recipe or 9
+
 local function onItem(tooltip, data)
 	local db = ns.db
 	if not db or not C_AuctionHouse then return end
 	if not (db.tipVendorBuy or db.tipVendorSell or db.tipAuction or db.tipDeposit or db.tipSaleRate or db.tipTrend
-		or db.tipLowest or db.tipBestCraft) then
+		or db.tipLowest or db.tipBestCraft or db.tipRecipe) then
 		return
 	end
 	local itemID = data and data.id
@@ -158,7 +166,13 @@ local function onItem(tooltip, data)
 	-- Only when it makes gold: the best of recipes that all lose it is nothing to craft.
 	local best = db.tipBestCraft and ns.BestCrafts.BestWith(itemID) or nil
 	if best and (best.profit <= 0 or best.score <= 0) then best = nil end
-	if not (vendorBuy or vendorSell or price or list or rate or trend or lowest or best) then return end
+	-- For a recipe item: the recipe it teaches, priced as the All recipes window
+	-- prices it. A loss shows too: it's what to know before buying one.
+	local recipe
+	if db.tipRecipe and select(6, C_Item.GetItemInfoInstant(itemID)) == RECIPE_CLASS then
+		recipe = ns.AllRecipes.Scroll(itemID)
+	end
+	if not (vendorBuy or vendorSell or price or list or rate or trend or lowest or best or recipe) then return end
 
 	tooltip:AddLine(" ")
 	if vendorBuy then tooltip:AddDoubleLine("Vendor Buy", money(vendorBuy), 1, 0.82, 0, 1, 1, 1) end
@@ -193,10 +207,6 @@ local function onItem(tooltip, data)
 			local icon = professionIcon(step.professionID)
 			tooltip:AddLine(string.rep("  ", index) .. (icon and format("|T%s:0|t ", icon) or "") .. name, 1, 1, 1)
 		end
-		-- Each always, never, or while Shift is held.
-		local function shown(choice)
-			return choice == "always" or (choice ~= "never" and IsShiftKeyDown())
-		end
 		-- The craft's return: its profit as a share of what its materials cost.
 		local share = shown(db.tipBestShowReturn) and ns.Format.ReturnShare(best.profit, best.cost)
 		if share then
@@ -205,6 +215,21 @@ local function onItem(tooltip, data)
 		-- With TSM: how well what it makes sells.
 		if best.saleRate and shown(db.tipBestRate) then
 			tooltip:AddDoubleLine("  TSM Sale Rate", ns.Format.SaleRate(best.saleRate), 0.53, 0.53, 0.53, 1, 1, 1)
+		end
+	end
+	if recipe then
+		-- What one craft of it makes or loses, and under it what it makes, as Best Craft
+		-- shows a craft. The return and sale rate follow Best Craft's choices.
+		local net = recipe.net
+		tooltip:AddDoubleLine("Recipe Profit", ns.Color(ns.AmountColor(net), (net > 0 and "+" or "") .. money(net)),
+			1, 0.82, 0, 1, 1, 1)
+		local icon = professionIcon(recipe.professionID)
+		tooltip:AddLine("  " .. (icon and format("|T%s:0|t ", icon) or "")
+			.. ns.Format.RarityColored(recipe.itemID, recipe.name), 1, 1, 1)
+		local share = shown(db.tipBestShowReturn) and ns.Format.ReturnShare(net, recipe.cost)
+		if share then tooltip:AddDoubleLine("  Return", ns.Format.Return(share), 0.53, 0.53, 0.53, 1, 1, 1) end
+		if recipe.saleRate and shown(db.tipBestRate) then
+			tooltip:AddDoubleLine("  TSM Sale Rate", ns.Format.SaleRate(recipe.saleRate), 0.53, 0.53, 0.53, 1, 1, 1)
 		end
 	end
 end
