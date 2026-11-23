@@ -2,10 +2,14 @@
 ArchdudeWhatsNew:Register("Craftonomics", {
 	title = "Craftonomics",
 	icon = "Interface\\Icons\\INV_Hammer_20",
-	version = "5.13.0",
+	version = "5.14.0",
 	seen = "CraftonomicsWhatsNew",
 	saved = { "CraftonomicsDB", "CraftonomicsCharDB" },
 	changes = {
+		{ "5.14.0",
+			"|cffffd100Prices for Hoard Value:|r Hoard Value 1.6.0 and later can value your bags, bank and warband bank with Craftonomics' prices, from wherever Craftonomics' Price addon option says, its own auction house scans included.",
+			"Fixed: the |cffffd100Recipe Profit|r line on a recipe's tooltip showed a loss as the wrong amount, for example 83s for a loss of 16s 66c. A loss now shows with a minus: -16s 66c.",
+		},
 		{ "5.13.0",
 			"|cffffd100Recipe profit on recipe tooltips:|r the tooltip of a recipe you can learn (a pattern, plan, schematic...) gets a |cffffd100Recipe Profit|r line: what one craft of the recipe it teaches makes, in green, or loses, in red, whether or not you know the recipe. Under it is what the recipe makes. It's priced as the All recipes window prices it: the materials bought and what the craft makes sold; on Retail at the rank picked in that window. Its return and TSM sale rate show under it as |cffffd100Best craft's return|r and |cffffd100Best craft's sale rate|r say. Recipes with no price for what they make or for one of their materials have no line, nor do ones that make an item bound when picked up, nor enchanting formulas on WoW Forever. Turn it off with |cffffd100Show recipe profit|r on the Tooltips options page.",
 		},
@@ -44,10 +48,6 @@ ArchdudeWhatsNew:Register("Craftonomics", {
 		{ "5.8.0",
 			"|cffffd100Best Craft follows chains:|r on a material's tooltip, the Best Craft line now also looks at what its crafts go into. When what a recipe makes goes into another recipe that makes more, like Heavy Stone into Heavy Blasting Powder and that into a bomb, the line shows that last recipe's profit, and the crafts on the way are listed under it in order, each set in further than the one before. Chains go up to four crafts.",
 			"|cffffd100Weigh best craft by sale rate (with TSM):|r a new option on the Tooltips options page, off by default. With it on, when the best craft is picked, a recipe's profit counts in full when what it makes has a TSM sale rate of 70% or more, and for less below that, in proportion: at 35% it counts for half. So a craft that sells well can beat one that makes more but rarely sells. The line still shows the craft's real profit.",
-		},
-		{ "5.7.0",
-			"|cffffd100Best Craft on material tooltips:|r a material's tooltip now shows the most profitable recipe this character knows that takes it: the profit of one craft on a |cffffd100Best Craft|r line, and under it the profession's icon and what the recipe makes. It's the Best crafts list's profit, so it follows your crafting strategy, and it only shows when that recipe makes a profit. A profession's recipes count once you've opened its profession window on this character. Turn it off with |cffffd100Show best craft|r on the Tooltips options page.",
-			"|cffffd100The best craft's sale rate (with TSM):|r hold |cffffd100Shift|r to also see the TSM sale rate of what that recipe makes. Outside your bags, hold Shift first, then hover the item. |cffffd100Best craft's sale rate|r on the Tooltips options page shows it always, or never.",
 		},
 	},
 })

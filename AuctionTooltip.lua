@@ -24,8 +24,12 @@ local TSM_NAMES = {
 -- bound to your account.
 local UNSELLABLE_BINDS = { [1] = true, [4] = true, [7] = true, [8] = true }
 
+-- The game's money text, with a minus for a loss: it can't show one by itself
+-- (a loss of 16s 66c came out as 83s 34c).
 local function money(copper)
-	return GetMoneyString(math.floor(copper + 0.5), true)
+	copper = math.floor(copper + 0.5)
+	local text = GetMoneyString(math.abs(copper), true)
+	return copper < 0 and ("-" .. text) or text
 end
 
 -- Whether the game takes `location` as an item that's there. The game can hand

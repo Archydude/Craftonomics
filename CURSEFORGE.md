@@ -37,13 +37,13 @@ Craftonomics, formerly **Craft Profit**, answers in gold: **profit or loss?** A 
 - **Best crafts**: every recipe ranked by profit, across all your characters
 - **Profit on every recipe** in the game's own recipe list
 - **All recipes**: every profession's recipes, as a list or a **trend heatmap**
-- **Ledger**: your profit so far, what's on the auction house, and what you vendored, used, disenchanted or gave away
+- **Ledger**: your profit so far, and where every craft went
 - **Auction house window**: shopping list, selling, cancelling undercut auctions
 - **No price addon needed**: its own price scan, **TradeSkillMaster** or **Auctionator** prices, or whichever is **freshest**
 - **Patron orders**: profit, rewards and missing materials in Blizzard's Patron tab, crafted from there
 
 ### Crafts and orders
-The sale price at the rank you'll get, minus the 5% cut and your materials. On orders: the commission, minus the materials **you** supply, plus sellable rewards. With concentration on, the **concentration strategy** picks the materials: cheapest, least concentration or most **gold per point**. The **Crafts** box multiplies it. A warning shows when the **AH deposit** is high on an item that sells poorly. Weapons and armor show their **disenchant value** and when disenchanting beats selling. Materials show what you **have**, and **Craft** and **Max** buttons craft from the panel.
+The sale price at the rank you'll get, minus the 5% cut and your materials. On orders: the commission, minus the materials **you** supply, plus sellable rewards. The **concentration strategy** picks the materials: cheapest, least concentration or most **gold per point**. A warning shows when the **AH deposit** is high on an item that sells poorly. Weapons and armor show their **disenchant value**. **Craft** and **Max** buttons craft from the panel.
 
 ### What should I craft?
 **Best crafts** has a **Return** column, and with TSM each item's **sale rate** and **trend**.
@@ -57,10 +57,10 @@ With TSM, switch **All recipes** to a **heatmap**: tiles colored by trend, sized
 Best crafts shows what a **skill point** costs. Materials in your **bank** are marked on the panel. **Craft myself** prices materials at what crafting them costs, and **Cheapest way** crafts or buys each, whichever is cheaper.
 
 ### Item tooltips
-Vendor and auction prices and the **AH deposit**, plus with TSM the **sale rate**, **trend** and whether the lowest auction is **cheap** or **expensive**. On a material: the **best craft** it leads to, chains included, with profit and return. On a pattern, plan or other recipe: the **profit** of the craft it teaches.
+Vendor and auction prices, the **AH deposit**, and with TSM the **sale rate**, **trend** and whether the lowest auction is **cheap** or **expensive**. Materials show the **best craft** they lead to, recipes the **profit** of the craft they teach.
 
 ### Good to know
-**TSM prices for alts** that keep TSM turned off. Type **/craftonomics** for options.
+**TSM prices for alts** that keep TSM turned off. **Hoard Value** can value your items with Craftonomics' prices. Type **/craftonomics** for options.
 
 This addon was made with AI.
 
@@ -74,18 +74,22 @@ This addon was made with AI.
 ## B. Upload File form
 
 **Files:** two, each uploaded with only its own game versions (why is in [UPLOADING.md](../UPLOADING.md)). The display name, release type and changelog are the same for both.
-- `dist\Craftonomics-5.13.0-retail.zip`: Retail `12.1.5`
-- `dist\Craftonomics-5.13.0-forever.zip`: WoW Forever `1.60.1`
+- `dist\Craftonomics-5.14.0-retail.zip`: Retail `12.1.5`
+- `dist\Craftonomics-5.14.0-forever.zip`: WoW Forever `1.60.1`
 
 **Display name**
 ```
-Craftonomics 5.13.0
+Craftonomics 5.14.0
 ```
 
 **Release type:** `Release`
 
 **Changelog** (paste only the newest part; paste older parts too if they never went up)
 ```markdown
+5.14.0
+- **Prices for Hoard Value:** Hoard Value 1.6.0 and later can value your bags, bank and warband bank with Craftonomics' prices, from wherever Craftonomics' Price addon option says, its own auction house scans included.
+- Fixed: the **Recipe Profit** line on a recipe's tooltip showed a loss as the wrong amount, for example 83s for a loss of 16s 66c. A loss now shows with a minus: -16s 66c.
+
 5.13.0
 - **Recipe profit on recipe tooltips:** the tooltip of a recipe you can learn (a pattern, plan, schematic...) gets a **Recipe Profit** line: what one craft of the recipe it teaches makes, in green, or loses, in red, whether or not you know the recipe. Under it is what the recipe makes. It's priced as the All recipes window prices it: the materials bought and what the craft makes sold; on Retail at the rank picked in that window. Its return and TSM sale rate show under it as **Best craft's return** and **Best craft's sale rate** say. Recipes with no price for what they make or for one of their materials have no line, nor do ones that make an item bound when picked up, nor enchanting formulas on WoW Forever. Turn it off with **Show recipe profit** on the Tooltips options page.
 

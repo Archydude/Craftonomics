@@ -1,5 +1,9 @@
 # Changelog
 
+## 5.14.0
+- **Prices for Hoard Value:** Hoard Value 1.6.0 and later can value your bags, bank and warband bank with Craftonomics' prices, from wherever Craftonomics' Price addon option says, its own auction house scans included.
+- Fixed: the **Recipe Profit** line on a recipe's tooltip showed a loss as the wrong amount, for example 83s for a loss of 16s 66c. A loss now shows with a minus: -16s 66c.
+
 ## 5.13.0
 - **Recipe profit on recipe tooltips:** the tooltip of a recipe you can learn (a pattern, plan, schematic...) gets a **Recipe Profit** line: what one craft of the recipe it teaches makes, in green, or loses, in red, whether or not you know the recipe. Under it is what the recipe makes. It's priced as the All recipes window prices it: the materials bought and what the craft makes sold; on Retail at the rank picked in that window. Its return and TSM sale rate show under it as **Best craft's return** and **Best craft's sale rate** say. Recipes with no price for what they make or for one of their materials have no line, nor do ones that make an item bound when picked up, nor enchanting formulas on WoW Forever. Turn it off with **Show recipe profit** on the Tooltips options page.
 
