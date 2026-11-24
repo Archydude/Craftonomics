@@ -93,7 +93,7 @@ local function freshest()
 	local scanned = ns.PriceScan.Seconds()
 	if scanned then list[#list + 1] = { name = "own", seconds = scanned } end
 	local auctionator = Auctionator and Auctionator.API and Auctionator.API.v1 and auctionatorScanned()
-	if auctionator then list[#list + 1] = { name = "auctionator", seconds = math.max(time() - auctionator, 0) } end
+	if auctionator then list[#list + 1] = { name = "auctionator", seconds = math.max(time() - auctionator, 0), at = auctionator } end
 	table.sort(list, function(a, b) return a.seconds < b.seconds end)
 	freshList = list
 	return list
@@ -110,11 +110,19 @@ local function freshFor(source)
 end
 
 -- Whether Auctionator saw the item in its last scan, going by how many days ago
--- it last saw it (`ageOf` is its function for that) and how old that scan is.
-local function auctionatorSaw(ageOf, arg, seconds)
+-- it last saw it (`ageOf` is its function for that) and when that scan ran.
+-- Comparing day buckets avoids rejecting a fresh scan taken right before rollover.
+local function auctionatorSaw(ageOf, arg, source)
 	if not ageOf then return false end
 	local ok, age = pcall(ageOf, ADDON_NAME, arg)
-	return ok and type(age) == "number" and age <= math.floor(seconds / 86400)
+	if not (ok and type(age) == "number") then return false end
+	local dayZero = Auctionator and Auctionator.Constants and Auctionator.Constants.SCAN_DAY_0
+	if dayZero and source.at then
+		local today = math.floor((time() - dayZero) / 86400)
+		local scanDay = math.floor((source.at - dayZero) / 86400)
+		return age <= math.max(today - scanDay, 0)
+	end
+	return age <= math.ceil(source.seconds / 86400)
 end
 
 -- A material's price from the freshest source that has it, and which that is. A
@@ -137,7 +145,7 @@ local function freshMaterial(itemID)
 			value = ns.PriceScan.MaterialInLastScan(itemID) and ns.PriceScan.Material(itemID)
 		else
 			local api = Auctionator.API.v1
-			value = auctionatorSaw(api.GetAuctionAgeByItemID, itemID, source.seconds)
+			value = auctionatorSaw(api.GetAuctionAgeByItemID, itemID, source)
 				and auctionatorValue(api.GetAuctionPriceByItemID, itemID)
 		end
 		if value then return value, source.name end
@@ -164,7 +172,7 @@ local function freshSale(link, itemID, tsmSource)
 			value = ns.PriceScan.SaleInLastScan(link, itemID) and ns.PriceScan.Sale(link, itemID)
 		else
 			local api = Auctionator.API.v1
-			value = auctionatorSaw(api.GetAuctionAgeByItemLink, link, source.seconds)
+			value = auctionatorSaw(api.GetAuctionAgeByItemLink, link, source)
 				and auctionatorValue(api.GetAuctionPriceByItemLink, link)
 		end
 		if value then return value, source.name end
@@ -388,13 +396,28 @@ function Prices.Listed(link)
 	if ok then return count, age end
 end
 
+-- Standard auction house deposit share of an item's vendor sell price, by
+-- duration index: Retail (12h/24h/48h) or WoW Forever (2h/8h/24h).
+local DEPOSIT_RATES = ns.QUALITY_CRAFTING and { 0.15, 0.30, 0.60 } or { 0.05, 0.20, 0.60 }
+
 -- What putting `qty` of an item on the auction house costs as a deposit, for the
 -- game's duration number `duration`, in copper, or nil when the game won't say.
 -- You get it back when the auction sells, and lose it when it runs out unsold.
 function Prices.Deposit(itemID, duration, qty)
-	if not (C_AuctionHouse and C_AuctionHouse.CalculateCommodityDeposit) then return end
-	local ok, deposit = pcall(C_AuctionHouse.CalculateCommodityDeposit, itemID, duration, qty)
-	if ok and type(deposit) == "number" and deposit > 0 then return deposit end
+	if C_AuctionHouse and C_AuctionHouse.CalculateCommodityDeposit then
+		local ok, deposit = pcall(C_AuctionHouse.CalculateCommodityDeposit, itemID, duration, qty)
+		if ok and type(deposit) == "number" and deposit > 0 then return deposit end
+	end
+	-- Non-commodities (gear, tools) have no commodity deposit: fall back to the
+	-- game's vendor-sell formula (at least 1s per auction on Retail).
+	local rate = DEPOSIT_RATES[duration]
+	local vendorSell = rate and itemID and select(11, C_Item.GetItemInfo(itemID))
+	if vendorSell and vendorSell > 0 then
+		local each = math.floor(vendorSell * rate)
+		if ns.QUALITY_CRAFTING and each < 100 then each = 100 end
+		local deposit = each * (qty or 1)
+		if deposit > 0 then return deposit end
+	end
 end
 
 -- Whether TSM is loaded, whatever the price addon option says (for its sales

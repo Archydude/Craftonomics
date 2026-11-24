@@ -277,19 +277,29 @@ end
 -- the Patron tab, resourcefulness alone) against what they did.
 local function learnProcs(data, model, result)
 	local professionID = ns.Procs.ProfessionOf(model.recipeID)
-	local used = {}
-	-- On an order, what the customer sent comes back to you too.
-	for _, list in ipairs({ model.materials or {}, model.provided or {} }) do
-		for _, material in ipairs(list) do used[material.itemID] = (used[material.itemID] or 0) + material.qty end
+	local providedCost, priced = 0, true
+	for _, material in ipairs(model.materials or {}) do
+		if material.slot and material.slot.reagentType == Enum.CraftingReagentType.Basic and not material.price then
+			priced = false
+		end
 	end
-	ns.Procs.Record(professionID, data, used)
+	for _, material in ipairs(model.provided or {}) do
+		if material.price then
+			providedCost = providedCost + material.price * material.qty
+		else
+			priced = false
+		end
+	end
+	local basicCost = ns.Model.BasicCost(model.materials or {}) + providedCost
+	local returnedPriced = priced and #result.saved > 0
+	for _, item in ipairs(result.saved) do
+		if not item.value then returnedPriced = false end
+	end
+	ns.Procs.Record(professionID, data, returnedPriced and result.savedValue or nil, priced and basicCost or nil)
 
 	local expected = model.procs
 	if not expected and model.recipeID then
-		local providedCost = 0
-		for _, material in ipairs(model.provided or {}) do providedCost = providedCost + (material.price or 0) * material.qty end
-		expected = ns.Procs.Expected(professionID, ns.Procs.RecipeChances(model.recipeID), nil,
-			ns.Model.BasicCost(model.materials or {}) + providedCost)
+		expected = ns.Procs.Expected(professionID, ns.Procs.RecipeChances(model.recipeID), nil, basicCost)
 	end
 	ns.Procs.AddToSession(expected and expected.total, result.bonus)
 end

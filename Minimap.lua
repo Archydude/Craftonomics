@@ -35,9 +35,13 @@ local registered = false
 local function professions()
 	local list = {}
 	local first, second, _, _, cooking = GetProfessions()
-	for _, index in ipairs({ first, second, cooking }) do
-		local name, icon, _, _, _, _, skillLine = GetProfessionInfo(index)
-		if name and skillLine then list[#list + 1] = { name = name, icon = icon, skillLine = skillLine } end
+	local slots = { first, second, cooking }
+	for i = 1, 3 do
+		local index = slots[i]
+		if index then
+			local name, icon, _, _, _, _, skillLine = GetProfessionInfo(index)
+			if name and skillLine then list[#list + 1] = { name = name, icon = icon, skillLine = skillLine } end
+		end
 	end
 	return list
 end

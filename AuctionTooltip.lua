@@ -101,9 +101,13 @@ local function professionIcon(professionID)
 		icon = ok and found or nil
 	end
 	if not icon and GetProfessions and GetProfessionInfo then
-		for _, index in ipairs({ GetProfessions() }) do
-			local _, mine, _, _, _, _, skillLine = GetProfessionInfo(index)
-			if skillLine == professionID or (parent and skillLine == parent) then icon = mine end
+		local profs = { GetProfessions() }
+		for i = 1, 5 do
+			local index = profs[i]
+			if index then
+				local _, mine, _, _, _, _, skillLine = GetProfessionInfo(index)
+				if skillLine == professionID or (parent and skillLine == parent) then icon = mine end
+			end
 		end
 	end
 	professionIcons[professionID] = icon or false

@@ -230,13 +230,18 @@ local function fromOldest(list, t, rank, qty, take)
 	return qty
 end
 
--- The post a sale came from: the same item name and price, posted before it, with
--- some left. Mails only name the item, so this is what says which rank sold.
+-- The post a sale came from: the same character, item name and price, posted
+-- before it, still up (not cancelled or expired), with some left. Mails only
+-- name the item, so this is what says which rank sold.
 local function findPost(posts, sale)
 	for index = firstLeft(posts), #posts do
 		local post = posts[index]
 		if post.t > sale.t then return end
-		if post.left > 0 and post.name == sale.name and math.abs(post.unit - sale.unit) <= PRICE_SLACK then
+		if post.left > post.pulled
+			and post.character == sale.character
+			and post.name == sale.name
+			and sale.t <= post.t + (post.hours or MAX_POST_HOURS) * 3600 + 2 * CRAFT_SLACK
+			and math.abs(post.unit - sale.unit) <= PRICE_SLACK then
 			return post
 		end
 	end
@@ -325,7 +330,9 @@ function Ledger.Analyze(db)
 			for index = #posts, 1, -1 do
 				if qty <= 0 then break end
 				local post = posts[index]
-				if post.t <= event.t and post.character == event.character and post.itemID == event.itemID
+				if post.t <= event.t
+					and event.t <= post.t + (post.hours or MAX_POST_HOURS) * 3600 + CRAFT_SLACK
+					and post.character == event.character and post.itemID == event.itemID
 					and math.abs(post.unit - event.unit) <= PRICE_SLACK and post.left > post.pulled then
 					local amount = math.min(post.left - post.pulled, qty)
 					post.pulled = post.pulled + amount
@@ -350,7 +357,7 @@ function Ledger.Analyze(db)
 			local post = findPost(posts, event)
 			local list, rank = byName[event.name], nil
 			if post then
-				post.left = math.max(post.left - event.qty, 0)
+				post.left = math.max(post.left - event.qty, post.pulled)
 				list, rank = byItem[post.itemID] or list, post.rank
 			end
 			local each = event.money / event.qty

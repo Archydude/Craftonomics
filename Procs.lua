@@ -25,8 +25,9 @@ local STATS = {
 }
 
 -- CraftonomicsDB.procSizes["Name-Realm"][professionID] = {
---   multicraft = { n, sum },      -- one per proc: extra items / items the craft made
---   resourcefulness = { n, sum }, -- one per material that came back: returned / used
+--   multicraft = { n, sum },           -- one per proc: extra items / items the craft made
+--   resourcefulness = { n, sum },      -- legacy per-material ratios (kept untouched)
+--   resourcefulnessShare = { n, sum }, -- one per proc: returned value / basic materials cost
 -- }
 local mine -- this character's table
 
@@ -46,8 +47,14 @@ local function sizesFor(professionID)
 	end
 	local sizes = mine[professionID]
 	if not sizes then
-		sizes = { multicraft = { n = 0, sum = 0 }, resourcefulness = { n = 0, sum = 0 } }
+		sizes = {
+			multicraft = { n = 0, sum = 0 },
+			resourcefulness = { n = 0, sum = 0 },
+			resourcefulnessShare = { n = 0, sum = 0 },
+		}
 		mine[professionID] = sizes
+	elseif not sizes.resourcefulnessShare then
+		sizes.resourcefulnessShare = { n = 0, sum = 0 }
 	end
 	return sizes
 end
@@ -128,9 +135,9 @@ function Procs.ExtraPerItem(professionID, character)
 	return average(professionID, "multicraft", BASE_EXTRA, character)
 end
 
--- Resourcefulness: the share of a material that comes back.
+-- Resourcefulness: the share of a craft's basic materials cost that comes back on a proc.
 function Procs.SavedShare(professionID, character)
-	return average(professionID, "resourcefulness", BASE_SAVED, character)
+	return average(professionID, "resourcefulnessShare", BASE_SAVED, character)
 end
 
 -- What procs add to one craft on average: {
@@ -164,21 +171,18 @@ local function add(count, value)
 	count.sum = count.sum + value
 end
 
--- Learns from a craft's result (the game's craft result `data`). `used` is
--- itemID -> how many of it the craft took.
-function Procs.Record(professionID, data, used)
+-- Learns from a craft's result (the game's craft result `data`). `savedValue` is
+-- what returned materials were worth and `basicCost` what all basic materials of
+-- the craft cost (nil when any price was missing).
+function Procs.Record(professionID, data, savedValue, basicCost)
 	local sizes = professionID and sizesFor(professionID)
 	if not sizes then return end
 	local extra = data.multicraft or 0
 	-- The quantity includes the multicraft extras.
 	local made = (data.quantity or 0) - extra
 	if extra > 0 and made > 0 then add(sizes.multicraft, extra / made) end
-	for _, returned in ipairs(data.resourcesReturned or {}) do
-		local itemID = returned.reagent and returned.reagent.itemID
-		local qty = itemID and used[itemID]
-		if qty and qty > 0 and (returned.quantity or 0) > 0 then
-			add(sizes.resourcefulness, math.min(returned.quantity / qty, 1))
-		end
+	if savedValue and savedValue > 0 and basicCost and basicCost > 0 then
+		add(sizes.resourcefulnessShare, math.min(savedValue / basicCost, 1))
 	end
 end
 
