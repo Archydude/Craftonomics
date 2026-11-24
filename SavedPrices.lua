@@ -112,9 +112,9 @@ local function onTSMData(tag, realmOrRegion, data)
 	local kind = TSM_ITEM_DATA[tag]
 	if not kind or type(data) ~= "string" then return end
 	if kind == "realm" and bareRealm(realmOrRegion) ~= bareRealm(tsmRealm()) then return end
-	tsmData[#tsmData + 1] = data
 	local downloaded = tonumber(data:match("downloadTime=(%d+)"))
 	if downloaded and (not tsmDownloaded or downloaded > tsmDownloaded) then tsmDownloaded = downloaded end
+	if not ns.db or ns.db.saveTSMPrices then tsmData[#tsmData + 1] = data end
 end
 
 -- When TSM's desktop app last downloaded this realm's prices (seconds since
@@ -604,5 +604,6 @@ local events = CreateFrame("Frame")
 events:RegisterEvent("PLAYER_ENTERING_WORLD")
 events:SetScript("OnEvent", function(self)
 	self:UnregisterEvent("PLAYER_ENTERING_WORLD")
+	if ns.db and not ns.db.saveTSMPrices then wipe(tsmData) end
 	C_Timer.After(LOGIN_DELAY, function() SavedPrices.Save() end)
 end)

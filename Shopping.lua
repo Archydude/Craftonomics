@@ -59,9 +59,7 @@ function Shopping.AddShopWithChoice(root)
 	root:CreateTitle(ns.LIST_ADDON_LABEL)
 	local function isChosen(key) return Shopping.ListTarget() == key end
 	local function choose(key)
-		ns.db.listAddon = key
-		ns.Panel.Refresh()
-		ns.Patron.Redraw()
+		ns.Options.Set("listAddon", key)
 		return MenuResponse and MenuResponse.Refresh
 	end
 	for _, choice in ipairs(ns.LIST_ADDON_CHOICES) do

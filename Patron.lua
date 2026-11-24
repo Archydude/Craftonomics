@@ -1290,8 +1290,7 @@ local function openGearMenu(owner)
 		root:CreateTitle("Spend concentration on")
 		local function isChosen(key) return ns.db.concentrationFor == key end
 		local function choose(key)
-			ns.db.concentrationFor = key
-			Patron.Redraw()
+			ns.Options.Set("concentrationFor", key)
 			return MenuResponse and MenuResponse.Refresh
 		end
 		for _, choice in ipairs(ns.CONCENTRATION_CHOICES) do

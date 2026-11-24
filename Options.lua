@@ -489,10 +489,10 @@ function Options.Create()
 			"A character shows up once you've opened its profession window, on any version of Craftonomics since 1.7.")
 		checkbox("rankConcentration", "Show its concentration",
 			"When the best rank needs concentration, add how much.")
-		button("Saved characters", "Forget...", ns.Ranks.OpenForgetMenu,
-			"Pick a character you deleted, renamed or moved, so its Craft Rank no longer shows on tooltips.\n\n" ..
-			"A character you still play comes back once you open its profession window again.")
 	end
+	button("Saved characters", "Forget...", ns.Ranks.OpenForgetMenu,
+		"Pick a character you deleted, renamed or moved, so it no longer shows in Best crafts or tooltips.\n\n" ..
+		"A character you still play comes back once you open its profession window again.")
 	checkbox("tipVendorBuy", "Show vendor buy price",
 		"On item tooltips: Vendor Buy, what a vendor charges for one. Only for items a vendor sells, once your " ..
 		"price addon has seen one sell it" .. (quality and "." or " (common crafting reagents are always known)."))
