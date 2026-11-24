@@ -1485,6 +1485,20 @@ local function drawCraft(model)
 	end
 	if #model.materials > 0 then addRow("Material cost", Money(-model.cost * count)) end
 	if output then
+		local breakEven, breakEvenProcs = ns.Model.BreakEven(model.cost, output.made, ns.db.ahCut, model.procs)
+		if breakEven then
+			local shown = breakEvenProcs or breakEven
+			addRow(Color("muted", "Break-even price"), Color("muted", Money(shown)), nil, nop, function(tip)
+				tip:SetText("Break-even price")
+				tip:AddLine(format("The lowest auction house price for one item that doesn't lose gold%s.",
+					ns.db.ahCut and " after the 5% auction house cut" or ""), 1, 1, 1, true)
+				if breakEvenProcs then
+					tip:AddLine(" ")
+					tip:AddDoubleLine("With average procs", Money(breakEvenProcs), 1, 1, 1, 1, 1, 1)
+					tip:AddDoubleLine("Without procs", Money(breakEven), 1, 1, 1, 1, 1, 1)
+				end
+			end)
+		end
 		disenchantDetails = drawDisenchant(model)
 	end
 	drawMaterials(model)

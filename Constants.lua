@@ -153,6 +153,7 @@ ns.DEFAULTS = {
 	bestSortAscending = false,
 	bestAllCharacters = false, -- the Best crafts list shows your other characters' and professions' recipes
 	bestProfitableOnly = false, -- the Best crafts list hides recipes that don't make a profit
+	bestCanCraft = false, -- the Best crafts list hides recipes you're short of materials for
 	bestShowIgnored = false, -- the Best crafts list shows the recipes you ignored, in grey
 	ledgerRange = 30,     -- the Ledger window's days
 }

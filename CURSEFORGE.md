@@ -43,10 +43,10 @@ Craftonomics, formerly **Craft Profit**, answers in gold: **profit or loss?** A 
 - **Patron orders**: profit, rewards and missing materials in Blizzard's Patron tab, crafted from there
 
 ### Crafts and orders
-The sale price at the rank you'll get, minus the 5% cut and your materials. On orders: the commission, minus the materials **you** supply, plus sellable rewards. The **concentration strategy** picks the materials: cheapest, least concentration or most **gold per point**. A warning shows when the **AH deposit** is high on an item that sells poorly. Weapons and armor show their **disenchant value**. **Craft** and **Max** buttons craft from the panel.
+The sale price at the rank you'll get, minus the 5% cut and your materials, plus the item's **break-even price** (plain and with procs). On orders: the commission, minus the materials **you** supply, plus sellable rewards. The **concentration strategy** picks cheapest, least concentration or most **gold per point**. High **AH deposits** show a warning; weapons and armor show **disenchant value**. **Craft** and **Max** buttons craft from the panel.
 
 ### What should I craft?
-**Best crafts** has a **Return** column, and with TSM each item's **sale rate** and **trend**.
+**Best crafts** has a **Return** column, an independent **Can craft now** filter, and with TSM each item's **sale rate** and **trend**.
 
 With TSM, switch **All recipes** to a **heatmap**: tiles colored by trend, sized by gold sold per day.
 
@@ -74,18 +74,25 @@ This addon was made with AI.
 ## B. Upload File form
 
 **Files:** two, each uploaded with only its own game versions (why is in [UPLOADING.md](../UPLOADING.md)). The display name, release type and changelog are the same for both.
-- `dist\Craftonomics-5.14.0-retail.zip`: Retail `12.1.5`
-- `dist\Craftonomics-5.14.0-forever.zip`: WoW Forever `1.60.1`
+- `dist\Craftonomics-5.15.0-retail.zip`: Retail `12.1.5`
+- `dist\Craftonomics-5.15.0-forever.zip`: WoW Forever `1.60.1`
 
 **Display name**
 ```
-Craftonomics 5.14.0
+Craftonomics 5.15.0
 ```
 
 **Release type:** `Release`
 
 **Changelog** (paste only the newest part; paste older parts too if they never went up)
 ```markdown
+5.15.0
+- **Break-even price on the panel:** each craft now shows the lowest auction house price per item that doesn't lose gold (after the 5% cut when enabled). Hover it to compare the plain break-even price with the lower break-even price counting your average procs.
+- **Can craft now filter:** Best crafts now has an independent **Can craft now** filter option, so you can list only the recipes you have the materials for right now.
+- Fixed: Resourcefulness expected savings now learn from the actual gold saved per craft instead of treating every proc as a fixed share of materials.
+- Fixed: Ledger sales matching ignores cancelled auctions, expired auctions, and posts from other characters, and auction house deposits for non-stackable gear use the vendor-sell deposit rate.
+- Fixed: **Freshest prices** now recognizes Auctionator scans taken across midnight, the minimap button still opens Cooking when your primary profession slots are empty, and **Forget** works on WoW Forever.
+
 5.14.0
 - **Prices for Hoard Value:** Hoard Value 1.6.0 and later can value your bags, bank and warband bank with Craftonomics' prices, from wherever Craftonomics' Price addon option says, its own auction house scans included.
 - Fixed: the **Recipe Profit** line on a recipe's tooltip showed a loss as the wrong amount, for example 83s for a loss of 16s 66c. A loss now shows with a minus: -16s 66c.

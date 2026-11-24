@@ -317,6 +317,21 @@ function Model.BasicCost(materials)
 	return cost
 end
 
+-- The lowest auction house listing price for one item that doesn't lose gold
+-- (after the 5% AH cut when `ahCut` is on). Returns the plain break-even price,
+-- and a second value counting average multicraft and resourcefulness when `procs`
+-- adds any bonus. Nil when `cost` or `made` isn't positive.
+function Model.BreakEven(cost, made, ahCut, procs)
+	if not (cost and cost > 0 and made and made > 0) then return end
+	local keep = ahCut and (1 - ns.AH_CUT) or 1
+	local plain = cost / (made * keep)
+	if not (procs and procs.total and procs.total > 0) then return plain end
+	local extra = (procs.chances and procs.chances.multicraft or 0) * (procs.extraPerItem or 0)
+	local effectiveCost = math.max(cost - (procs.resourcefulness or 0), 0)
+	local withProcs = effectiveCost / (made * (1 + extra) * keep)
+	return plain, withProcs
+end
+
 -- How an item binds when it can still be sold: not at all, when equipped or when used.
 local SELLABLE_BINDS = { [0] = true, [2] = true, [3] = true }
 

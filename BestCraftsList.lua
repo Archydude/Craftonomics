@@ -367,7 +367,7 @@ local function visibleRows()
 		if matches(row, search) and not ns.db.bestHidden[row.group]
 			and not (ns.db.bestIgnored[row.entry.recipeID] and not ns.db.bestShowIgnored)
 			and not (ns.db.bestProfitableOnly and not ((shownProfit(row) or 0) > 0)) then
-			if ns.db.craftStrategy == "owned" and row.short then
+			if (ns.db.craftStrategy == "owned" or ns.db.bestCanCraft) and row.short then
 				short = short + 1
 			else
 				shown[#shown + 1] = row
@@ -383,6 +383,9 @@ end
 local function emptyNote(count, short)
 	if count > 0 or #allRows == 0 or ns.BestCrafts.Progress() then return end
 	if short > 0 then
+		if ns.db.bestCanCraft and ns.db.craftStrategy ~= "owned" then
+			return "Nothing you can craft with what you own.\n\nTurn off Can craft now in the Filter menu to see the rest."
+		end
 		return format("Nothing you can craft with what you own.\n\nThe %s strategy only lists recipes you have every "
 			.. "material for. Pick another strategy below to see the rest.", ns.Strategy()[3])
 	end
@@ -946,6 +949,15 @@ local function filterMenu(_, root)
 	root:CreateCheckbox("Profitable only", function() return ns.db.bestProfitableOnly end, function()
 		ns.db.bestProfitableOnly = not ns.db.bestProfitableOnly
 		BestCraftsList.Render()
+	end)
+	local canCraft = root:CreateCheckbox("Can craft now", function() return ns.db.bestCanCraft end, function()
+		ns.db.bestCanCraft = not ns.db.bestCanCraft
+		BestCraftsList.Render()
+	end)
+	canCraft:SetTooltip(function(tip)
+		GameTooltip_SetTitle(tip, "Can craft now")
+		GameTooltip_AddNormalLine(tip, "Only show recipes you already have every material for, without changing your "
+			.. "crafting strategy.")
 	end)
 	if ns.QUALITY_CRAFTING then
 		local procs = root:CreateCheckbox("Count procs in profits", function() return ns.db.countProcs end,
