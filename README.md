@@ -25,7 +25,7 @@ It was called **Craft Profit** up to version 4.8. On Retail your settings and hi
 
 - **Auction house window:** Craftonomics' own window beside the auction house: your shopping list, selling from your bags, your auctions with the undercut ones marked, and a price scan of its own.
 
-- **Session total:** under Profit/Loss, what all your crafts made since you logged in on this character (a `/reload` keeps it), including orders crafted from the Patron tab, where it also shows under the order list. Crafts whose item has no sale price, like enchants and treatises, count as a loss of what their materials cost, less what resourcefulness gives back. Click it to reset it to zero. After 5 crafts it also shows your **luck**: how much more (or less) your procs made than expected, like **Luck +14%**.
+- **Session total:** under Profit/Loss, what all your crafts made since you logged in on this character (a `/reload` keeps it), including orders crafted from the Patron tab, where it also shows under the order list. Crafts whose item has no sale price, like enchants and treatises, count as a loss of what their materials cost, less what resourcefulness gives back. Click it to reset it to zero. Once you've had a proc that counts toward your stats, it also shows your **luck**: how much more (or less) your procs made than expected, like **Luck +14%**.
 
 - **TSM prices for alts:** keep TSM turned off on your crafting alts and they still get TSM prices, saved by a character with TSM each time it logs in.
 
@@ -36,6 +36,8 @@ It was called **Craft Profit** up to version 4.8. On Retail your settings and hi
 Nothing runs until you open your profession window, apart from Craftonomics' window at the auction house (and its price scan there, when neither TSM nor Auctionator gives you prices), noting your auction sales when you open your mailbox, noting what vendors sell when you visit one and, if you turn it on, saving TSM prices for your alts when you log in. Procs are counted as an average, always shown next to the profit without them.
 
 Works by itself: with no price addon, Craftonomics scans the auction house for prices (see [Auction house window](#auction-house-window)). It uses **TradeSkillMaster** and **Auctionator** prices when they're installed, and TSM adds how fast items sell. Built for WoW Midnight 12.1, and works on **WoW Forever** too, with a few things of its own there (see [WoW Forever](#wow-forever)).
+
+**Contents:** [Install](#install) · [Use](#use) · [Best crafts](#best-crafts) · [Patron orders](#patron-orders) · [WoW Forever](#wow-forever) · [All recipes](#all-recipes) · [Auction house window](#auction-house-window) · [Ledger](#ledger) · [Options](#options) · [Notes](#notes)
 
 ## Install
 Copy the `Craftonomics` folder to `World of Warcraft\_retail_\Interface\AddOns\` and restart the game.
@@ -464,11 +466,11 @@ Click the gear on the panel (or Craftonomics options in the gear menu under the 
 
 | Option | What it does |
 |---|---|
-| Show your best rank | The **Craft Rank** line on item tooltips. On by default. This and the next three aren't on WoW Forever, which has no ranks. |
+| Show your best rank | The **Craft Rank** line on item tooltips. On by default. This and the next two aren't on WoW Forever, which has no ranks. |
 | Show it for | All your characters (default) or this character only. |
 | Show its concentration | Adds the concentration when the best rank needs it. On by default. |
 | Saved characters: Forget... | Pick a character you deleted, renamed or moved to take it off Craft Rank tooltips and the Best crafts list. |
-| Show vendor buy price / vendor sell price / auction price / AH deposit / sale rate / trend | Each turns one line on item tooltips on or off: Vendor Buy, Vendor Sell, the auction price (with the stack's), the AH deposit, TSM's sale rate, TSM's trend (see [Prices on item tooltips](#prices-on-item-tooltips)). All on by default. |
+| Show vendor buy price / vendor sell price / auction price / AH deposit / lowest vs market / sale rate / trend | Each turns one line on item tooltips on or off: Vendor Buy, Vendor Sell, the auction price (with the stack's), the AH deposit, Lowest vs Market, TSM's sale rate, TSM's trend (see [Prices on item tooltips](#prices-on-item-tooltips)). All on by default. |
 | Show best craft | The **Best Craft** line on a material's tooltip: your most profitable recipe that takes it, and what one craft makes. On by default. |
 | Weigh best craft by sale rate | Off by default. With TSM, when the best craft is picked, a recipe's profit counts in full at a TSM sale rate of 70% or more and for less below that, in proportion (half at 35%). The line still shows the real profit. |
 | Weigh best craft by return | Off by default. When the best craft is picked, a recipe's profit counts for more the higher its return on what its materials cost and for less the lower: as it is at 25%, double at 50%, half at 12.5%, four times at most. The line still shows the real profit. |

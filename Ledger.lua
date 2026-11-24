@@ -74,6 +74,7 @@ Ledger.KIND_ORDER = { "craft", "patron", "personal", "guild", "public" }
 local saved
 local demo -- made-up records in place of saved, for testing (see Ledger.ToggleDemo)
 local nameIndex = {} -- name -> its place in saved.names
+local costCache -- itemID -> { list = {}, index = 1 }, invalidated on non-disenchant mutations
 local onChange = nop
 
 function Ledger.Watch(changed)
@@ -115,7 +116,7 @@ local function indexOf(name)
 	return index
 end
 
-local function append(list, t, ...)
+local function appendRaw(list, t, ...)
 	local day = saved.days[dayOf(t)]
 	if not day then
 		day = {}
@@ -124,6 +125,11 @@ local function append(list, t, ...)
 	local fields = { t, ... }
 	for i = 1, select("#", ...) + 1 do fields[i] = tostring(fields[i]) end
 	day[list] = (day[list] or "") .. table.concat(fields, SEP) .. "\n"
+end
+
+local function append(list, t, ...)
+	costCache = nil
+	appendRaw(list, t, ...)
 end
 
 -- Calls fn with the fields of each line of `text`.
@@ -775,14 +781,37 @@ function Ledger.RecordGone(itemID, qty, reason, money, rank)
 	onChange()
 end
 
+local function ensureCostCache()
+	if costCache then return costCache end
+	costCache = {}
+	for _, craft in ipairs((Ledger.Analyze(saved))) do
+		if craft.itemID and craft.kind == "craft" and craft.left > 0 then
+			local bucket = costCache[craft.itemID]
+			if not bucket then
+				bucket = { list = {}, index = 1 }
+				costCache[craft.itemID] = bucket
+			end
+			bucket.list[#bucket.list + 1] = craft
+		end
+	end
+	return costCache
+end
+
 -- What one of an item you crafted cost to make, going by the oldest craft of it
 -- with some left, and whether that cost isn't known. Nil when none is left on
--- record: then it wasn't one of your crafts.
+-- record: then it wasn't one of your crafts. Consumes one unit from the cache.
 local function costToMake(itemID)
-	for _, craft in ipairs((Ledger.Analyze(saved))) do
-		if craft.itemID == itemID and craft.kind == "craft" and craft.left > 0 then
-			return craft.cost / craft.qty, craft.noCost or false
+	local bucket = ensureCostCache()[itemID]
+	while bucket and bucket.index <= #bucket.list do
+		local craft = bucket.list[bucket.index]
+		if craft.left > 0 then
+			local each = craft.cost / craft.qty
+			local noCost = craft.noCost or false
+			craft.left = craft.left - 1
+			if craft.left <= 0 then bucket.index = bucket.index + 1 end
+			return each, noCost
 		end
+		bucket.index = bucket.index + 1
 	end
 end
 
@@ -807,7 +836,7 @@ function Ledger.RecordDisenchant(sourceID, loot)
 		if each then
 			cost, unknown = each, noCost
 			-- Counted at what it cost to make: the profit is all in what it gave.
-			append("used", t, sourceID, 1, 1)
+			appendRaw("used", t, sourceID, 1, 1)
 		end
 	end
 	local keep = ns.db.ahCut and (1 - ns.AH_CUT) or 1
@@ -822,10 +851,22 @@ function Ledger.RecordDisenchant(sourceID, loot)
 	for _, item in ipairs(loot) do
 		local share = worth > 0 and item.unit * item.qty / worth or item.qty / count
 		local itemCost = cost * share
+		local rank = rankOf(item.link, 0)
 		saved.items[item.itemID] = saved.items[item.itemID] or nameIn(item.link)
 		-- No forecasts: the panel had nothing to say about it.
-		append("crafts", t, character, profession, Ledger.DISENCHANT, item.itemID, rankOf(item.link, 0), item.qty, "craft",
+		appendRaw("crafts", t, character, profession, Ledger.DISENCHANT, item.itemID, rank, item.qty, "craft",
 			whole(item.unit), whole(itemCost), 0, whole(item.unit * item.qty - itemCost), "", "", unknown and 1 or 0)
+		if costCache and item.qty > 0 then
+			local bucket = costCache[item.itemID]
+			if not bucket then
+				bucket = { list = {}, index = 1 }
+				costCache[item.itemID] = bucket
+			end
+			bucket.list[#bucket.list + 1] = {
+				itemID = item.itemID, kind = "craft", qty = item.qty, left = item.qty,
+				cost = whole(itemCost), noCost = unknown,
+			}
+		end
 	end
 	onChange()
 end
@@ -877,16 +918,20 @@ function Ledger.WriteOff(list)
 	onChange()
 end
 
--- Takes an item's write-offs back: what was written off of it is left again.
-function Ledger.TakeBack(itemID)
+-- Takes an item's write-offs back (scoped to `rank` when given): what was
+-- written off of it is left again.
+function Ledger.TakeBack(itemID, rank)
 	if demo or not saved then return end
+	costCache = nil
 	local id = tostring(itemID)
 	for _, day in pairs(saved.days) do
 		if day.gone then
 			local kept = {}
 			for line in day.gone:gmatch("[^\n]+") do
 				local fields = split(line)
-				if not (fields[3] == id and fields[5] == "written") then kept[#kept + 1] = line .. "\n" end
+				local lineRank = tonumber(fields[7]) or 0
+				local sameRank = not rank or rank == 0 or lineRank == 0 or lineRank == rank
+				if not (fields[3] == id and fields[5] == "written" and sameRank) then kept[#kept + 1] = line .. "\n" end
 			end
 			day.gone = #kept > 0 and table.concat(kept) or nil
 		end
@@ -1050,6 +1095,7 @@ function Ledger.RollUp(db, now)
 	for day in pairs(db.days) do
 		if day < oldest then db.days[day] = nil end
 	end
+	if db == saved then costCache = nil end
 end
 
 -- The months past KEEP_DAYS, newest first: { month ("2026-08"), crafts, items, cost,
@@ -1070,6 +1116,7 @@ end
 function Ledger.Clear()
 	saved.names, saved.items, saved.days, saved.months = {}, {}, {}, {}
 	wipe(nameIndex)
+	costCache = nil
 	onChange()
 end
 
@@ -1132,6 +1179,7 @@ end
 function Ledger.Init()
 	CraftonomicsDB.ledger = CraftonomicsDB.ledger or { names = {}, items = {}, days = {}, months = {} }
 	saved = CraftonomicsDB.ledger
+	costCache = nil
 	for index, name in ipairs(saved.names) do nameIndex[name] = index end
 	watchPosts()
 	local events = CreateFrame("Frame")

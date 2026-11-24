@@ -35,6 +35,12 @@ function Procs.Init()
 	CraftonomicsDB.procSizes = CraftonomicsDB.procSizes or {}
 end
 
+function Procs.Forget(key)
+	if not (CraftonomicsDB and CraftonomicsDB.procSizes and key) then return end
+	if mine and mine == CraftonomicsDB.procSizes[key] then mine = nil end
+	CraftonomicsDB.procSizes[key] = nil
+end
+
 -- This character's counts for a profession, made when first needed.
 local function sizesFor(professionID)
 	if not mine then

@@ -1,5 +1,10 @@
 # Changelog
 
+## 5.15.1
+- Fixed: mass disenchanting your own crafts runs much faster without freezing on large ledgers.
+- Fixed: taking back a Ledger write-off only restores that item's rank instead of undoing other ranks as well, and Enchanting Vellums reliably use their vendor price.
+- Fixed: forgetting a character removes its saved proc data too, Best Crafts' concentration **Per point** value accounts for your expected procs, and background layout work is skipped while the crafting window is closed.
+
 ## 5.15.0
 - **Break-even price on the panel:** each craft now shows the lowest auction house price per item that doesn't lose gold (after the 5% cut when enabled). Hover it to compare the plain break-even price with the lower break-even price counting your average procs.
 - **Can craft now filter:** Best crafts now has an independent **Can craft now** filter option, so you can list only the recipes you have the materials for right now.

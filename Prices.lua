@@ -189,6 +189,8 @@ function Prices.Vendor(itemID)
 		or (api and auctionatorValue(api.GetVendorPriceByItemID, itemID))
 		or (own and own.Vendor(itemID))
 		or (ns.VENDOR_PRICES and ns.VENDOR_PRICES[itemID])
+		-- Price addons may not know vellums, and a vendor always has them.
+		or (itemID == ns.VELLUM_ITEM and ns.VELLUM_PRICE or nil)
 end
 
 -- What a material costs you, in copper (nil if nobody knows): what it costs to
@@ -234,8 +236,6 @@ function Prices.Buy(itemID)
 	local vendor = Prices.Vendor(itemID)
 	if vendor and not ns.db.vendorOnAH then return vendor end
 	return auctionPrice(itemID) or vendor
-		-- Price addons may not know vellums, and a vendor always has them.
-		or (itemID == ns.VELLUM_ITEM and ns.VELLUM_PRICE or nil)
 end
 
 -- With "Buy vendor items on the auction house" on: when the auction house asks

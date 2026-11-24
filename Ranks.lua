@@ -451,6 +451,7 @@ function Ranks.Forget(key)
 	if not (characters and characters[key]) then return end
 	local name = characterName(characters[key], true)
 	characters[key] = nil
+	if ns.Procs and ns.Procs.Forget then ns.Procs.Forget(key) end
 	ns.BestCraftsList.Refresh()
 	ns.Shopping.Say(format("Forgot %s's Craft Ranks and Best crafts.", name))
 end

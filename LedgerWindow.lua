@@ -645,7 +645,7 @@ local function showItemMenu(button, item)
 		end)
 		writeOff:SetEnabled(left > 0)
 		if item.written > 0 then
-			root:CreateButton("Take its write-offs back", function() ns.Ledger.TakeBack(item.itemID) end)
+			root:CreateButton("Take its write-offs back", function() ns.Ledger.TakeBack(item.itemID, item.rank) end)
 		end
 	end)
 end

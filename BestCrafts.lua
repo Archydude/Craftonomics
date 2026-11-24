@@ -599,9 +599,16 @@ local function priceEntry(entry)
 	local liftedPrice = row.profit and prices[row.quality + 1]
 	if liftedPrice then
 		local lifted = liftedOption(entry, options, row.quality, liftedPrice)
-		local extra = lifted and liftedPrice - lifted.full - row.profit
-		if extra and extra > 0 then
-			row.concentration = { extra = extra, points = lifted.option.concentration, quality = row.quality + 1 }
+		if lifted then
+			local base = ns.db.countProcs and row.expected or row.profit
+			local liftedProfit = liftedPrice - lifted.full
+			if ns.db.countProcs then
+				liftedProfit = liftedProfit + ns.Procs.Expected(entry.professionID, entry.chances, liftedPrice, lifted.basic, entry.character).total
+			end
+			local extra = liftedProfit - base
+			if extra > 0 then
+				row.concentration = { extra = extra, points = lifted.option.concentration, quality = row.quality + 1 }
+			end
 		end
 	end
 

@@ -2,10 +2,15 @@
 ArchdudeWhatsNew:Register("Craftonomics", {
 	title = "Craftonomics",
 	icon = "Interface\\Icons\\INV_Hammer_20",
-	version = "5.15.0",
+	version = "5.15.1",
 	seen = "CraftonomicsWhatsNew",
 	saved = { "CraftonomicsDB", "CraftonomicsCharDB" },
 	changes = {
+		{ "5.15.1",
+			"Fixed: mass disenchanting your own crafts runs much faster without freezing on large ledgers.",
+			"Fixed: taking back a Ledger write-off only restores that item's rank instead of undoing other ranks as well, and Enchanting Vellums reliably use their vendor price.",
+			"Fixed: forgetting a character removes its saved proc data too, Best Crafts' concentration |cffffd100Per point|r value accounts for your expected procs, and background layout work is skipped while the crafting window is closed.",
+		},
 		{ "5.15.0",
 			"|cffffd100Break-even price on the panel:|r each craft now shows the lowest auction house price per item that doesn't lose gold (after the 5% cut when enabled). Hover it to compare the plain break-even price with the lower break-even price counting your average procs.",
 			"|cffffd100Can craft now filter:|r Best crafts now has an independent |cffffd100Can craft now|r filter option, so you can list only the recipes you have the materials for right now.",
@@ -46,11 +51,6 @@ ArchdudeWhatsNew:Register("Craftonomics", {
 		{ "5.9.1",
 			"|cffffd100Close button on the panel:|r an |cffffd100X|r in the panel's top right corner closes it. The Craftonomics button at the top of the profession window opens it again.",
 			"The |cffffd100Open with the profession window|r tick box is back at the bottom of the panel.",
-		},
-		{ "5.9.0",
-			"|cffffd100Freshest prices:|r a new choice under |cffffd100Price addon|r in the options. It prices with whichever is newest: TSM (its desktop app's last download), Auctionator's last scan, or Craftonomics' last full scan. An item the newest one didn't see takes the next newest's price. With TSM loaded it only applies where the TSM price type is |cffffd100Lowest auction right now|r, for materials, crafted items or both, since that's the price a scan gives too; with any other TSM price type, prices come as with Automatic. The footers of the panel and the Best crafts list say which one is in use and how old it is.",
-			"With Freshest prices, Craftonomics' scan starts by itself when you open the auction house, at most once an hour, unless Auctionator does the pricing there. A scan made with TSM in the game doesn't count as a newer TSM price.",
-			"Fixed: after Craftonomics' price scan finished, the Best crafts list kept its old prices until you opened it again. It now uses the new prices right away, and so do the profits on the recipe list and the Best Craft line on tooltips.",
 		},
 	},
 })

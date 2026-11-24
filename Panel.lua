@@ -792,9 +792,8 @@ local function goBack()
 	Panel.Refresh()
 end
 
--- The Back row, under the panel's top: "Back to" the recipe whose material you
--- clicked, while there is one. Drawn before the rest of a craft.
-local function drawBack(model)
+-- Keeps `headingTo`/`trail` accurate when navigating between recipes.
+local function updateTrail(model)
 	if headingTo == model.recipeID or GetTime() > headingUntil then headingTo = nil end
 	-- You're on a recipe you came from again (picked by hand, or its materials
 	-- lead back to it): the way back ends before it.
@@ -806,6 +805,12 @@ local function drawBack(model)
 			end
 		end
 	end
+end
+
+-- The Back row, under the panel's top: "Back to" the recipe whose material you
+-- clicked, while there is one. Drawn before the rest of a craft.
+local function drawBack(model)
+	updateTrail(model)
 	local to = trail[#trail]
 	if not to then return end
 	local name = to.name or "the recipe"
@@ -1699,9 +1704,14 @@ function Panel.Render()
 
 	Panel.current = model
 	shownItems = model and itemsOf(model) or {}
-	if model then
-		if model.kind == "order" then drawOrder(model) else drawCraft(model) end
+	if not (model and open) then
+		if crafting then updateTrail(model) end
+		frame:Hide()
+		refreshTooltip()
+		ns.Best.Check(model)
+		return
 	end
+	if model.kind == "order" then drawOrder(model) else drawCraft(model) end
 
 	for i = rowCount + 1, #rows do
 		rows[i].left:Hide()
@@ -1723,14 +1733,8 @@ function Panel.Render()
 	for name, dropdown in pairs(dropdowns) do
 		if not dropdownsUsed[name] then dropdown:Hide() end
 	end
-	-- Closed (see Panel.Toggle), it's drawn all the same, so what follows the panel
-	-- (the shopping list, the Best crafts tab) has what it needs.
-	if model and open then
-		frame:SetHeight(Layout.PAD_TOP + contentHeight + Layout.PAD_BOTTOM)
-		frame:Show()
-	else
-		frame:Hide()
-	end
+	frame:SetHeight(Layout.PAD_TOP + contentHeight + Layout.PAD_BOTTOM)
+	frame:Show()
 	refreshTooltip()
 	ns.Best.Check(model)
 end
