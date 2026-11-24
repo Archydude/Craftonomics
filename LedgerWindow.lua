@@ -1475,6 +1475,8 @@ local function create()
 	searchBox:SetSize(200, 20)
 	searchBox:SetPoint("TOPLEFT", SIDE + 6, -(FILTERS_TOP + 2))
 	searchBox:SetAutoFocus(false)
+	searchBox:SetFontObject("GameFontHighlight")
+	if searchBox.Instructions then searchBox.Instructions:SetFontObject("GameFontDisable") end
 	searchBox:HookScript("OnTextChanged", refresh)
 
 	rangeDropdown = createDropdown(rangeMenu, 130)

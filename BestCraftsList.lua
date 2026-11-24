@@ -1162,8 +1162,12 @@ local function createList()
 	search:SetSize(160, 20)
 	search:SetPoint("TOPRIGHT", -PAD - 2, -PAD + 2)
 	search:SetAutoFocus(false)
+	search:SetFontObject("GameFontHighlight")
 	search:HookScript("OnTextChanged", BestCraftsList.Refresh)
-	if search.Instructions then search.Instructions:SetText("Item or material") end
+	if search.Instructions then
+		search.Instructions:SetFontObject("GameFontDisable")
+		search.Instructions:SetText("Item or material")
+	end
 	search:HookScript("OnEnter", function(self)
 		GameTooltip:SetOwner(self, "ANCHOR_TOP")
 		GameTooltip:SetText("Search")
