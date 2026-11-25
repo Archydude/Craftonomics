@@ -383,8 +383,13 @@ local function profitTooltip(row)
 	tooltip:AddLine(" ")
 	line("Commission (after cut)", model.receive)
 	line("Materials you supply", -model.cost, true)
-	local rewards = model.total - model.receive + model.cost
-	if rewards > 0 then line("Sellable rewards", rewards) end
+	if model.sellableRewardsValue ~= nil or model.estimatedRewardsValue ~= nil then
+		if (model.sellableRewardsValue or 0) > 0 then line("Sellable rewards", model.sellableRewardsValue) end
+		if (model.estimatedRewardsValue or 0) > 0 then line("Estimated rewards", model.estimatedRewardsValue) end
+	else
+		local rewards = model.total - model.receive + model.cost
+		if rewards > 0 then line("Sellable rewards", rewards) end
+	end
 	tooltip:AddLine(" ")
 	-- With procs counted: what resourcefulness adds on average, up to the expected
 	-- profit the list shows.
@@ -513,6 +518,25 @@ local function rewardsOf(order)
 	return list
 end
 
+local function addBagBreakdown(tooltip, est, limit)
+	for i = 1, math.min(limit or 6, #est.breakdown) do
+		local drop = est.breakdown[i]
+		local name = (ns.Format and ns.Format.ItemName and ns.Format.ItemName(drop.itemID))
+			or ("Item " .. drop.itemID)
+		local left = format("%s  |cff888888%.0f%% (%.2f/bag)|r", name, drop.pct * 100, drop.avgQty)
+		local right = drop.bound and "|cff888888not sellable|r"
+			or (drop.unitPrice and ns.Format.Money(drop.expected) or "|cffff6666no price|r")
+		tooltip:AddDoubleLine(left, right, 1, 1, 1, 1, 1, 1)
+	end
+end
+
+local function rewardBagID(reward)
+	if not reward then return end
+	if reward.itemID and ns.Model.IsTrackedBag(reward.itemID) then return reward.itemID end
+	local map = reward.currencyType and ns.MOXIE_BAGS and ns.MOXIE_BAGS[reward.currencyType]
+	return map and map.bagID or nil
+end
+
 local function rewardTooltip(button)
 	local reward = button.reward
 	GameTooltip:SetOwner(button, "ANCHOR_RIGHT")
@@ -527,9 +551,46 @@ local function rewardTooltip(button)
 			GameTooltip:AddLine(" ")
 			GameTooltip:AddDoubleLine(reward.qty > 1 and format("Worth (%d)", reward.qty) or "Worth",
 				ns.Format.Money(price * reward.qty), 1, 0.82, 0, 1, 1, 1)
+		elseif ns.Model.IsTrackedBag(reward.itemID) then
+			local est = ns.Model.BagEstimate(reward.itemID)
+			GameTooltip:AddLine(" ")
+			if est then
+				GameTooltip:AddDoubleLine(reward.qty > 1 and format("Estimated value (%d)", reward.qty) or "Estimated value",
+					ns.Format.Money(est.value * reward.qty), 1, 0.82, 0, 1, 1, 1)
+				GameTooltip:AddLine(format("From %d bag%s opened (live AH prices):", est.opens, est.opens == 1 and "" or "s"),
+					0.53, 0.53, 0.53)
+				addBagBreakdown(GameTooltip, est, 6)
+				if not ns.db.countPatronBags then
+					GameTooltip:AddLine("Not counted in profit (turn on in gear menu or options).", 0.53, 0.53, 0.53, true)
+				end
+			else
+				GameTooltip:AddLine("Open these bags to learn their live average value.", 0.53, 0.53, 0.53, true)
+			end
+			GameTooltip:AddLine("Right-click: view learned bag drops", 0.4, 0.8, 1)
 		end
 	else
 		GameTooltip:SetCurrencyByID(reward.currencyType, reward.qty)
+		local map = ns.MOXIE_BAGS and ns.MOXIE_BAGS[reward.currencyType]
+		if map then
+			local bagName = (C_Item.GetItemNameByID and C_Item.GetItemNameByID(map.bagID))
+				or (ns.PATRON_BAGS and ns.PATRON_BAGS[map.bagID]) or ("Item " .. map.bagID)
+			local est = ns.Model.MoxieEstimate(reward.currencyType)
+			GameTooltip:AddLine(" ")
+			if est then
+				GameTooltip:AddDoubleLine(reward.qty > 1 and format("Estimated value (%d)", reward.qty) or "Estimated value",
+					ns.Format.Money(est.value * reward.qty), 1, 0.82, 0, 1, 1, 1)
+				GameTooltip:AddLine(format("%s/Moxie from %d %s opened:", ns.Format.Money(est.value), est.opens, bagName),
+					0.53, 0.53, 0.53, true)
+				addBagBreakdown(GameTooltip, est, 6)
+				if not ns.db.countPatronBags then
+					GameTooltip:AddLine("Not counted in profit (turn on in gear menu or options).", 0.53, 0.53, 0.53, true)
+				end
+			else
+				GameTooltip:AddLine(format("Open %s (%d Moxie) to learn its live value.", bagName, map.cost),
+					0.53, 0.53, 0.53, true)
+			end
+			GameTooltip:AddLine("Right-click: view learned bag drops", 0.4, 0.8, 1)
+		end
 	end
 	GameTooltip:Show()
 end
@@ -663,6 +724,14 @@ local function createCells(row)
 			rewardTooltip(self)
 		end)
 		button:SetScript("OnLeave", function(self) hideRowTooltip(self, row) end)
+		button:RegisterForClicks("RightButtonUp")
+		button:SetScript("OnClick", function(self, btn)
+			if btn ~= "RightButton" then return end
+			local bagID = rewardBagID(self.reward)
+			if bagID and ns.Options and ns.Options.OpenBagDrops then
+				ns.Options.OpenBagDrops(bagID)
+			end
+		end)
 		own.rewards.buttons[i] = button
 	end
 
@@ -837,14 +906,14 @@ end
 -- Our headers, in place of Blizzard's three, in its header style. Profit and
 -- Actions sort the list; the others don't.
 local HEADERS = {
-	profit = { text = "Profit", sorts = "profit", tip = "Commission after the cut, plus the rewards that sell, minus the "
+	profit = { text = "Profit", sorts = "profit", tip = "Commission after the cut, plus sellable (and optionally learned bag/Moxie) rewards, minus the "
 		.. "materials you supply, at the qualities that reach the order's minimum quality. The concentration it "
 		.. "takes is shown after it.\n\nWith Count procs in profits on (Craftonomics options), it's "
 		.. "Expected: what the order makes on average with resourcefulness, on the materials you supply and the "
 		.. "ones the customer sent (what it saves comes back to you). Multicraft doesn't count, since the customer "
 		.. "gets the item." },
 	rewards = { text = "Rewards", tip = "What the patron gives besides the commission. Green counts give "
-		.. "profession knowledge. Point at one for its value." },
+		.. "profession knowledge. Point at one for its live breakdown, or right-click to view learned bag drops." },
 	materials = { text = "Materials", tip = "Whether you have everything for the order, or how much you're missing. "
 		.. "Point at it for the list." },
 	actions = { text = "Actions", sorts = "actions", tip = "The cart adds what's missing to the shopping list (Shift-click "
@@ -914,6 +983,11 @@ end
 
 local function setSort(mode)
 	ns.db.patronSort = mode
+	sortedRows = nil
+	Patron.Redraw()
+end
+
+function Patron.Resort()
 	sortedRows = nil
 	Patron.Redraw()
 end
@@ -1307,6 +1381,15 @@ local function openGearMenu(owner)
 			tooltip:AddLine(ns.NEXT_LOSING_TIP, 1, 1, 1, true)
 		end)
 
+		local bagEst = root:CreateCheckbox(ns.COUNT_PATRON_BAGS, function() return ns.db.countPatronBags end, function()
+			ns.Options.Set("countPatronBags", not ns.db.countPatronBags)
+			return MenuResponse and MenuResponse.Refresh
+		end)
+		bagEst:SetTooltip(function(tooltip)
+			GameTooltip_SetTitle(tooltip, ns.COUNT_PATRON_BAGS)
+			tooltip:AddLine(ns.COUNT_PATRON_BAGS_TIP, 1, 1, 1, true)
+		end)
+
 		ns.Shopping.AddShopWithChoice(root)
 		if ns.Shopping.CanClear() then
 			root:CreateDivider()
@@ -1320,6 +1403,7 @@ local function openGearMenu(owner)
 			end)
 		end
 		root:CreateDivider()
+		root:CreateButton("Learned bag drops...", function() ns.Options.OpenBagDrops() end)
 		root:CreateButton("Craftonomics options", ns.Options.Open)
 	end)
 end

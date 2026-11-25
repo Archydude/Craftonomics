@@ -27,6 +27,7 @@ local RESCAN_DELAY = 1
 -- }
 local scan
 local active -- the scan in progress (the same as scan, unless the last one is still shown)
+local scanStale = false
 local watchers = {} -- who shows the scan: { changed, wanted } each (see BestCrafts.Watch)
 
 -- Called when the scan has something new to show.
@@ -73,8 +74,13 @@ end
 local function outputAt(recipeID, reagents, qualityID)
 	local ok, output = pcall(C_TradeSkillUI.GetRecipeOutputItemData, recipeID, reagents, nil, qualityID)
 	-- An enchant can have a link without an item behind it: that's nothing to sell.
-	if ok and output and output.hyperlink and (output.itemID or 0) > 0 then
-		return { link = output.hyperlink, itemID = output.itemID }
+	if ok and output and (output.itemID or 0) > 0 then
+		local link = output.hyperlink
+		if not link then
+			if C_Item.RequestLoadItemDataByID then C_Item.RequestLoadItemDataByID(output.itemID) end
+			link = "item:" .. output.itemID
+		end
+		return { link = link, itemID = output.itemID }
 	end
 end
 
@@ -163,6 +169,10 @@ local function scanRecipe(recipeID, info, professionID)
 			output = scrollAt(recipeID, info.name, rank)
 		elseif makesItem then
 			output = outputAt(recipeID, firstReagents, qualityIDs and qualityIDs[rank])
+			if not output and not qualityIDs and (schematic.outputItemID or 0) > 0 then
+				if C_Item.RequestLoadItemDataByID then C_Item.RequestLoadItemDataByID(schematic.outputItemID) end
+				output = { link = "item:" .. schematic.outputItemID, itemID = schematic.outputItemID }
+			end
 		end
 		entry.outputs[rank] = output
 		if output and ns.Prices.Sale(output.link, output.itemID) then anyPrice = true end
@@ -217,6 +227,7 @@ local function listable(recipeID, info, professionID)
 end
 
 local function scanAll(run, recipeIDs)
+	run.seen = run.seen or {}
 	local wanted = {}
 	for _, recipeID in ipairs(recipeIDs) do
 		local info = C_TradeSkillUI.GetRecipeInfo(recipeID)
@@ -225,6 +236,7 @@ local function scanAll(run, recipeIDs)
 	end
 	run.total = #wanted
 	for _, info in ipairs(wanted) do
+		run.seen[info.recipeID] = true
 		local entry = scanRecipe(info.recipeID, info, run.professionID)
 		if entry then run.recipes[#run.recipes + 1] = entry end
 		run.done = run.done + 1
@@ -244,7 +256,8 @@ function BestCrafts.Scan()
 
 	-- Each opening of the list asks the price addons again.
 	forgetMarket()
-	local run = { professionID = professionID, name = name, total = 0, done = 0, recipes = {}, finished = false }
+	scanStale = false
+	local run = { professionID = professionID, name = name, total = 0, done = 0, recipes = {}, seen = {}, finished = false }
 	local previous = scan
 	-- Keep showing the last scan of the same profession while this one runs.
 	if not (previous and previous.professionID == professionID and previous.finished) then scan = run end
@@ -335,12 +348,22 @@ function BestCrafts.Watch(changed, wanted)
 	watchers[#watchers + 1] = { changed = changed, wanted = wanted }
 end
 
+-- Whether the current scan is missing changes learned while no scan was visible.
+function BestCrafts.IsStale()
+	return scanStale
+end
+
 -- Scans the profession shown, unless its scan is there already or under way.
-function BestCrafts.Ensure()
+function BestCrafts.Ensure(missingRecipeID)
 	local professionID = shownProfession()
 	if not professionID then return end
 	if active and active.professionID == professionID then return end
-	if scan and scan.professionID == professionID and scan.finished then return end
+	local ready = scan and scan.professionID == professionID and scan.finished and not scanStale
+	if ready and missingRecipeID and not (scan.seen and scan.seen[missingRecipeID]) then
+		local info = C_TradeSkillUI.GetRecipeInfo(missingRecipeID)
+		if listable(missingRecipeID, info, professionID) then ready = false end
+	end
+	if ready then return end
 	BestCrafts.Scan()
 end
 
@@ -595,19 +618,30 @@ local function priceEntry(entry)
 	row.expected = row.profit and row.profit + row.procs.total
 
 	-- What concentrating adds: one rank above the row's, made the concentration
-	-- strategy's way, minus what the row makes without it.
-	local liftedPrice = row.profit and prices[row.quality + 1]
+	-- strategy's way, minus what the row makes without it. When the row is
+	-- already at max rank (e.g. a 2-rank recipe reachable without concentration
+	-- only with dearer materials), also check lifting from the rank below with
+	-- cheaper materials and concentration.
+	local base = row.profit and (ns.db.countProcs and row.expected or row.profit)
+	local liftedQuality = row.quality and row.quality + 1
+	local liftedPrice = base and liftedQuality and prices[liftedQuality]
+	local liftedFrom = row.quality
+	if not liftedPrice and base and row.quality and row.quality > 1 and prices[row.quality] then
+		liftedQuality = row.quality
+		liftedPrice = prices[row.quality]
+		liftedFrom = row.quality - 1
+	end
 	if liftedPrice then
-		local lifted = liftedOption(entry, options, row.quality, liftedPrice)
+		local lifted = liftedOption(entry, options, liftedFrom, liftedPrice)
 		if lifted then
-			local base = ns.db.countProcs and row.expected or row.profit
 			local liftedProfit = liftedPrice - lifted.full
 			if ns.db.countProcs then
 				liftedProfit = liftedProfit + ns.Procs.Expected(entry.professionID, entry.chances, liftedPrice, lifted.basic, entry.character).total
 			end
-			local extra = liftedProfit - base
+			local baseline = liftedQuality == row.quality and math.max(base, 0) or base
+			local extra = liftedProfit - baseline
 			if extra > 0 then
-				row.concentration = { extra = extra, points = lifted.option.concentration, quality = row.quality + 1 }
+				row.concentration = { extra = extra, points = lifted.option.concentration, quality = liftedQuality }
 			end
 		end
 	end
@@ -909,6 +943,7 @@ end
 
 local rescanQueued
 local function queueRescan()
+	if scan or active then scanStale = true end
 	if rescanQueued or not scan then return end
 	rescanQueued = true
 	C_Timer.After(RESCAN_DELAY, function()

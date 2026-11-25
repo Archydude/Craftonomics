@@ -75,7 +75,7 @@ local saved
 local demo -- made-up records in place of saved, for testing (see Ledger.ToggleDemo)
 local nameIndex = {} -- name -> its place in saved.names
 local costCache -- itemID -> { list = {}, index = 1 }, invalidated on non-disenchant mutations
-local onChange = nop
+local onChange = nop or function() end
 
 function Ledger.Watch(changed)
 	onChange = changed
@@ -385,20 +385,54 @@ function Ledger.Analyze(db)
 
 	-- What's on the auction house right now, and whose crafts those are: each
 	-- auction still up counts toward that character's oldest crafts of the item
-	-- with some left.
+	-- with some left. Blizzard's owned-auction snapshot (`db.live`) overrides any
+	-- older `posts` records for that character so auctions posted outside
+	-- Craftonomics' hooks (e.g. Auctionator) or via confirmation still show.
 	local now = time()
 	local keep = (ns.db and ns.db.ahCut) and (1 - ns.AH_CUT) or 1
-	for _, post in ipairs(posts) do
-		if now < post.t + (post.hours or MAX_POST_HOURS) * 3600 then post.up = math.max(post.left - post.pulled, 0) end
-		local qty = post.up
-		for _, craft in ipairs(qty > 0 and byItem[post.itemID] or {}) do
+	local function assignPosted(character, itemID, rank, qty, unit)
+		for _, craft in ipairs(qty > 0 and byItem[itemID] or {}) do
 			if qty <= 0 then break end
 			local free = craft.left - craft.posted
-			if free > 0 and craft.character == post.character and (post.rank == 0 or craft.rank == post.rank) then
+			if free > 0 and craft.character == character and (rank == 0 or craft.rank == rank) then
 				local amount = math.min(free, qty)
 				craft.posted = craft.posted + amount
-				craft.postedMoney = craft.postedMoney + amount * post.unit * keep
+				craft.postedMoney = craft.postedMoney + amount * unit * keep
 				qty = qty - amount
+			end
+		end
+	end
+	for _, post in ipairs(posts) do
+		if now < post.t + (post.hours or MAX_POST_HOURS) * 3600 then post.up = math.max(post.left - post.pulled, 0) end
+		local snap = db.live and db.live[post.character]
+		if not snap or post.t > snap.at then
+			assignPosted(post.character, post.itemID, post.rank, post.up, post.unit)
+		end
+	end
+	for character, snap in pairs(db.live or {}) do
+		local live = {}
+		for _, entry in ipairs(snap.list or {}) do
+			if (entry.qty or 0) > 0 and (not entry.expiresAt or now < entry.expiresAt) then
+				live[#live + 1] = { itemID = entry.itemID, rank = entry.rank or 0, qty = entry.qty, unit = entry.unit or 0 }
+			end
+		end
+		for _, sale in ipairs(sales) do
+			if sale.character == character and sale.t > (snap.at or 0) + 300 then
+				local rem = sale.qty
+				for _, entry in ipairs(live) do
+					if rem <= 0 then break end
+					if entry.qty > 0 and db.items[entry.itemID] == sale.name
+						and math.abs(entry.unit - sale.unit) <= PRICE_SLACK then
+						local take = math.min(entry.qty, rem)
+						entry.qty = entry.qty - take
+						rem = rem - take
+					end
+				end
+			end
+		end
+		for _, entry in ipairs(live) do
+			if entry.qty > 0 then
+				assignPosted(character, entry.itemID, entry.rank, entry.qty, entry.unit)
 			end
 		end
 	end
@@ -673,17 +707,21 @@ end
 ---------------------------------------------------------------------------
 
 local function me()
-	local _, key = ns.Ranks.Me()
+	local _, key = ns.Ranks and ns.Ranks.Me and ns.Ranks.Me()
 	return key or format("%s-%s", UnitName("player") or "?", GetNormalizedRealmName() or "?")
 end
 
 -- The rank in an item's link, or `fallback`: crafted items carry it in the link,
 -- ranked materials are a separate item each.
 local function rankOf(link, fallback)
-	local ok, rank = pcall(C_TradeSkillUI.GetItemCraftedQualityByItemInfo, link)
-	if ok and rank and rank > 0 then return rank end
-	ok, rank = pcall(C_TradeSkillUI.GetItemReagentQualityByItemInfo, link)
-	if ok and rank and rank > 0 then return rank end
+	if C_TradeSkillUI and C_TradeSkillUI.GetItemCraftedQualityByItemInfo then
+		local ok, rank = pcall(C_TradeSkillUI.GetItemCraftedQualityByItemInfo, link)
+		if ok and rank and rank > 0 then return rank end
+	end
+	if C_TradeSkillUI and C_TradeSkillUI.GetItemReagentQualityByItemInfo then
+		local ok, rank = pcall(C_TradeSkillUI.GetItemReagentQualityByItemInfo, link)
+		if ok and rank and rank > 0 then return rank end
+	end
 	return fallback or 0
 end
 
@@ -888,15 +926,23 @@ function Ledger.Missing()
 	end
 	-- An auction that ran out or was cancelled comes back by mail, so one posted
 	-- these last days counts whether or not it's still up.
-	local since = time() - POST_DAYS * DAY
+	local now = time()
+	local since = now - POST_DAYS * DAY
 	for _, post in ipairs(posts) do
 		if post.character == mine and post.t >= since and post.left > 0 then
 			posted[post.itemID] = (posted[post.itemID] or 0) + post.left
 		end
 	end
+	local snap = saved.live and saved.live[mine]
+	local livePosted = {}
+	for _, entry in ipairs(snap and snap.list or {}) do
+		if (entry.qty or 0) > 0 and (not entry.expiresAt or now < entry.expiresAt) then
+			livePosted[entry.itemID] = (livePosted[entry.itemID] or 0) + entry.qty
+		end
+	end
 	local list, total = {}, 0
 	for itemID, qty in pairs(left) do
-		local have = ns.Model.Owned(itemID) + (posted[itemID] or 0)
+		local have = ns.Model.Owned(itemID) + math.max(posted[itemID] or 0, livePosted[itemID] or 0)
 		if qty > have then
 			list[#list + 1] = { itemID = itemID, qty = qty - have }
 			total = total + qty - have
@@ -939,38 +985,156 @@ function Ledger.TakeBack(itemID, rank)
 	onChange()
 end
 
--- Something you put on the auction house, for `duration` (the game's number for
--- how long). Only your own crafts matter.
-local function recordPost(location, qty, unit, duration)
+-- Pending post captured at Post*/ConfirmPost* and committed once the server
+-- confirms AUCTION_HOUSE_AUCTION_CREATED, plus debounced owned-auction refresh.
+local pendingPost
+local ownedReadThisVisit = false
+local ownedRefreshQueued = false
+
+local function requestOwnedSoon()
+	if ownedRefreshQueued then return end
+	ownedRefreshQueued = true
+	C_Timer.After(1.0, function()
+		ownedRefreshQueued = false
+		if ns.AuctionSearch and ns.AuctionSearch.IsOpen and ns.AuctionSearch.IsOpen()
+			and not (ns.PriceScan and ns.PriceScan.State and ns.PriceScan.State())
+			and ns.AuctionSearch.Owned and ns.AuctionSearch.Waiting
+			and ns.AuctionSearch.Waiting("ledger") == 0 then
+			ns.AuctionSearch.Owned("ledger", nop)
+		end
+	end)
+end
+
+-- Resolves an auction post from an ItemLocation (handling missing hyperlinks
+-- on commodities and bag-slot fallback).
+local function buildPost(location, qty, unit, duration)
 	if not (saved and location and unit and (qty or 0) > 0) then return end
 	local ok, link = pcall(C_Item.GetItemLink, location)
-	if not (ok and link) then return end
-	local itemID = C_Item.GetItemInfoInstant(link)
+	if not ok then link = nil end
+	local itemID = link and C_Item.GetItemInfoInstant and C_Item.GetItemInfoInstant(link) or nil
+	if (not link or not itemID) and location.GetBagAndSlot and C_Container and C_Container.GetContainerItemInfo then
+		local okSlot, bag, slot = pcall(location.GetBagAndSlot, location)
+		local info = okSlot and bag and C_Container.GetContainerItemInfo(bag, slot)
+		if info then
+			link = link or info.hyperlink
+			itemID = itemID or info.itemID
+		end
+	end
+	if not itemID and C_Item.GetItemID then
+		local okID, id = pcall(C_Item.GetItemID, location)
+		if okID and id and id > 0 then itemID = id end
+	end
 	if not (itemID and saved.items[itemID]) then return end
-	append("posts", time(), indexOf(me()), itemID, rankOf(link), qty, whole(unit), nameIn(link) or saved.items[itemID],
-		POST_HOURS[duration] or MAX_POST_HOURS)
-	onChange()
+	return {
+		itemID = itemID,
+		rank = rankOf(link or itemID),
+		qty = qty,
+		unit = whole(unit),
+		name = nameIn(link) or saved.items[itemID],
+		hours = POST_HOURS[duration] or MAX_POST_HOURS,
+		at = GetTime(),
+	}
 end
 
 -- Your auctions as the game last listed them, the ones not sold yet: auctionID ->
--- { itemID, qty, unit }, of your own crafts. So a cancelled one is known by more
--- than its number.
+-- { itemID, qty, unit }, of your own crafts. Also updates `saved.live` for the
+-- current character and backfills unseen auctions into `posts` once for future
+-- mailbox sale rank matching.
 local ownAuctions = {}
 
 local function readOwnAuctions()
+	ownedReadThisVisit = true
+	wipe(ownAuctions)
+	local now = time()
+	saved.live = saved.live or {}
+	saved.seenAuctions = saved.seenAuctions or {}
+	for id, exp in pairs(saved.seenAuctions) do
+		if type(exp) ~= "number" or exp < now then saved.seenAuctions[id] = nil end
+	end
+
+	local meKey = me()
+	local liveList = {}
 	for index = 1, C_AuctionHouse.GetNumOwnedAuctions() do
 		local info = C_AuctionHouse.GetOwnedAuctionInfo(index)
 		local itemID = info and info.itemKey and info.itemKey.itemID
-		if itemID and info.auctionID and saved.items[itemID] and info.status ~= Enum.AuctionStatus.Sold then
-			ownAuctions[info.auctionID] = { itemID = itemID, qty = info.quantity or 1,
-				unit = info.buyoutAmount or info.bidAmount or 0 }
+		local sold = Enum.AuctionStatus and info.status == Enum.AuctionStatus.Sold
+		if itemID and saved.items[itemID] and not sold and (info.quantity or 0) > 0 then
+			local qty = info.quantity or 1
+			local unit = whole(info.buyoutAmount or info.bidAmount or 0)
+			local rank = rankOf(info.itemLink or itemID)
+			local secs = info.timeLeftSeconds or MAX_POST_HOURS * 3600
+			local expiresAt = now + secs
+			if info.auctionID then
+				ownAuctions[info.auctionID] = { itemID = itemID, qty = qty, unit = unit }
+			end
+			liveList[#liveList + 1] = {
+				id = info.auctionID,
+				itemID = itemID,
+				rank = rank,
+				qty = qty,
+				unit = unit,
+				expiresAt = expiresAt,
+			}
+			if info.auctionID and not saved.seenAuctions[info.auctionID] then
+				saved.seenAuctions[info.auctionID] = expiresAt
+				local hours = math.max(math.ceil(secs / 3600), 1)
+				append("posts", math.max(now - 60, 0), indexOf(meKey), itemID, rank, qty, unit,
+					nameIn(info.itemLink) or saved.items[itemID], hours)
+			end
 		end
 	end
+	saved.live[meKey] = { at = now, list = liveList }
+	onChange()
+end
+
+-- Commits a captured post once the auction house confirms creation, and schedules
+-- a synced refresh so unhooked addon posts (e.g. Auctionator) also appear.
+local function onAuctionCreated(auctionID)
+	if not saved then return end
+	if pendingPost and (GetTime() - pendingPost.at) <= 10 then
+		local p = pendingPost
+		pendingPost = nil
+		local now = time()
+		local meKey = me()
+		append("posts", now, indexOf(meKey), p.itemID, p.rank, p.qty, p.unit, p.name, p.hours)
+		local expiresAt = now + p.hours * 3600
+		if auctionID then
+			saved.seenAuctions = saved.seenAuctions or {}
+			saved.seenAuctions[auctionID] = expiresAt
+			ownAuctions[auctionID] = { itemID = p.itemID, qty = p.qty, unit = p.unit }
+		end
+		if saved.live and saved.live[meKey] then
+			saved.live[meKey].at = now
+			saved.live[meKey].list = saved.live[meKey].list or {}
+			saved.live[meKey].list[#saved.live[meKey].list + 1] = {
+				id = auctionID,
+				itemID = p.itemID,
+				rank = p.rank,
+				qty = p.qty,
+				unit = p.unit,
+				expiresAt = expiresAt,
+			}
+		end
+		onChange()
+	end
+	ownedReadThisVisit = false
+	requestOwnedSoon()
 end
 
 -- You cancelled an auction: it isn't on the auction house any more.
 local function recordCancel(auctionID)
 	local auction = auctionID and ownAuctions[auctionID]
+	if saved then
+		local snap = saved.live and saved.live[me()]
+		if snap and snap.list and auctionID then
+			for i = #snap.list, 1, -1 do
+				if snap.list[i].id == auctionID then
+					table.remove(snap.list, i)
+					break
+				end
+			end
+		end
+	end
 	if not (saved and auction) then return end
 	ownAuctions[auctionID] = nil
 	append("pulled", time(), indexOf(me()), auction.itemID, auction.qty, whole(auction.unit))
@@ -1042,12 +1206,28 @@ end
 
 local function watchPosts()
 	if not C_AuctionHouse then return end
-	hooksecurefunc(C_AuctionHouse, "PostItem", function(location, duration, qty, bid, buyout)
-		recordPost(location, qty, buyout or bid, duration)
-	end)
-	hooksecurefunc(C_AuctionHouse, "PostCommodity", function(location, duration, qty, unit)
-		recordPost(location, qty, unit, duration)
-	end)
+	if C_AuctionHouse.PostItem then
+		hooksecurefunc(C_AuctionHouse, "PostItem", function(location, duration, qty, bid, buyout)
+			pendingPost = buildPost(location, qty, buyout or bid, duration)
+		end)
+	end
+	if C_AuctionHouse.PostCommodity then
+		hooksecurefunc(C_AuctionHouse, "PostCommodity", function(location, duration, qty, unit)
+			pendingPost = buildPost(location, qty, unit, duration)
+		end)
+	end
+	if C_AuctionHouse.ConfirmPostItem then
+		hooksecurefunc(C_AuctionHouse, "ConfirmPostItem", function(location, duration, qty, bid, buyout)
+			local p = buildPost(location, qty, buyout or bid, duration)
+			if p then pendingPost = p elseif pendingPost then pendingPost.at = GetTime() end
+		end)
+	end
+	if C_AuctionHouse.ConfirmPostCommodity then
+		hooksecurefunc(C_AuctionHouse, "ConfirmPostCommodity", function(location, duration, qty, unit)
+			local p = buildPost(location, qty, unit, duration)
+			if p then pendingPost = p elseif pendingPost then pendingPost.at = GetTime() end
+		end)
+	end
 end
 
 ---------------------------------------------------------------------------
@@ -1095,6 +1275,22 @@ function Ledger.RollUp(db, now)
 	for day in pairs(db.days) do
 		if day < oldest then db.days[day] = nil end
 	end
+	for auctionID, expiresAt in pairs(db.seenAuctions or {}) do
+		if type(expiresAt) ~= "number" or expiresAt < now then db.seenAuctions[auctionID] = nil end
+	end
+	for character, snap in pairs(db.live or {}) do
+		if type(snap) == "table" and type(snap.list) == "table" then
+			local kept = {}
+			for _, entry in ipairs(snap.list) do
+				if (entry.qty or 0) > 0 and (not entry.expiresAt or now < entry.expiresAt) then
+					kept[#kept + 1] = entry
+				end
+			end
+			if #kept > 0 then snap.list = kept else db.live[character] = nil end
+		else
+			db.live[character] = nil
+		end
+	end
 	if db == saved then costCache = nil end
 end
 
@@ -1114,8 +1310,9 @@ end
 -- Forgets every record, for all your characters. Sales from before stay out: seeded
 -- stays set, so what the mailbox told us doesn't come back.
 function Ledger.Clear()
-	saved.names, saved.items, saved.days, saved.months = {}, {}, {}, {}
+	saved.names, saved.items, saved.days, saved.months, saved.live, saved.seenAuctions = {}, {}, {}, {}, {}, {}
 	wipe(nameIndex)
+	wipe(ownAuctions)
 	costCache = nil
 	onChange()
 end
@@ -1179,6 +1376,8 @@ end
 function Ledger.Init()
 	CraftonomicsDB.ledger = CraftonomicsDB.ledger or { names = {}, items = {}, days = {}, months = {} }
 	saved = CraftonomicsDB.ledger
+	saved.live = saved.live or {}
+	saved.seenAuctions = saved.seenAuctions or {}
 	costCache = nil
 	for index, name in ipairs(saved.names) do nameIndex[name] = index end
 	watchPosts()
@@ -1188,12 +1387,28 @@ function Ledger.Init()
 	-- Guarded: not every version of the game has these.
 	pcall(events.RegisterEvent, events, "OWNED_AUCTIONS_UPDATED")
 	pcall(events.RegisterEvent, events, "AUCTION_CANCELED")
+	pcall(events.RegisterEvent, events, "AUCTION_HOUSE_AUCTION_CREATED")
+	pcall(events.RegisterEvent, events, "AUCTION_HOUSE_SHOW")
+	pcall(events.RegisterEvent, events, "AUCTION_HOUSE_CLOSED")
 	events:SetScript("OnEvent", function(_, event, ...)
 		if event == "OWNED_AUCTIONS_UPDATED" then
 			pcall(readOwnAuctions)
 			return
 		elseif event == "AUCTION_CANCELED" then
 			recordCancel((...))
+			return
+		elseif event == "AUCTION_HOUSE_AUCTION_CREATED" then
+			onAuctionCreated((...))
+			return
+		elseif event == "AUCTION_HOUSE_SHOW" then
+			ownedReadThisVisit = false
+			C_Timer.After(1.5, function()
+				if not ownedReadThisVisit then requestOwnedSoon() end
+			end)
+			return
+		elseif event == "AUCTION_HOUSE_CLOSED" then
+			pendingPost, ownedReadThisVisit = nil, false
+			if ns.AuctionSearch and ns.AuctionSearch.Drop then ns.AuctionSearch.Drop("ledger") end
 			return
 		end
 		if event ~= "PLAYER_LOGIN" then

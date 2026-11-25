@@ -1295,6 +1295,8 @@ local function bestTooltip(kind, best, recipeID)
 			tip:AddDoubleLine("Costs more, saves concentration", signedMoney(gain), 1, 1, 1, 1, 1, 1)
 		elseif best.usesOwned then
 			tip:AddDoubleLine("Costs more, uses what you own", signedMoney(gain), 1, 1, 1, 1, 1, 1)
+		elseif best.savesCost then
+			tip:AddDoubleLine("Cheaper materials, lower rank", signedMoney(gain), 1, 1, 1, 1, 1, 1)
 		end
 	end
 end
@@ -1520,9 +1522,11 @@ local function drawCraft(model)
 	if ns.QUALITY_CRAFTING then
 		addConcentrationDropdown(not model.concentrating
 			and "Concentrate is off in the crafting window, so this changes nothing for this recipe right now."
+			or ns.db.craftStrategy == "cheapest"
+			and "Crafting strategy is set to Cheapest materials, so this changes nothing for this recipe."
 			or model.ways == 0 and "This recipe has no materials or ranks to choose between, so this changes nothing for it."
-			or model.ways == 1 and "Only one combination of materials makes this rank, so this changes nothing for this "
-				.. "recipe. The rank comes from your crafting strategy."
+			or model.ways == 1 and "Only one combination of materials fits your crafting strategy for this rank, so this "
+				.. "changes nothing for this recipe."
 			or nil)
 	end
 	addVendorRow()
@@ -1552,7 +1556,28 @@ local function drawIncome(model)
 	addHeading("Income", Color(ns.AmountColor(income), Money(income)))
 	-- One line, after the consortium's cut.
 	addRow("Commission" .. cutNote(model.consortiumCut, model.commission, "cut"), Money(model.receive))
-	for _, reward in ipairs(sellable) do addRow(Item(reward.itemID, reward.qty), Money(reward.value)) end
+	for _, reward in ipairs(sellable) do
+		local label = reward.currency and ns.Format.Currency(reward.currency, reward.qty) or Item(reward.itemID, reward.qty)
+		if reward.estimated and reward.estimate then
+			local est = reward.estimate
+			addRow(label .. Color("muted", " (estimated)"), Money(reward.value), nil, nop, function(tip)
+				tip:SetText("Estimated reward value")
+				tip:AddLine(format("From %d bag%s opened (live AH prices).", est.opens, est.opens == 1 and "" or "s"),
+					0.53, 0.53, 0.53, true)
+				for i = 1, math.min(6, #est.breakdown) do
+					local drop = est.breakdown[i]
+					if drop.expected > 0 then
+						local name = (ns.Format and ns.Format.ItemName and ns.Format.ItemName(drop.itemID))
+							or ("Item " .. drop.itemID)
+						tip:AddDoubleLine(format("%s  %.0f%% (%.2f/bag)", name, drop.pct * 100, drop.avgQty),
+							Money(drop.expected), 1, 1, 1, 1, 1, 1)
+					end
+				end
+			end)
+		else
+			addRow(label, Money(reward.value))
+		end
+	end
 	for _, reward in ipairs(unpriced) do
 		addRow(Item(reward.itemID, reward.qty), Color("warning", "no price"), nil, nop, function(tip)
 			tip:SetText("No price")
@@ -1570,9 +1595,18 @@ local function drawIncome(model)
 			function(tip)
 				tip:SetText("Rewards that don't sell")
 				for _, reward in ipairs(other) do
-					tip:AddLine(reward.currency and ns.Format.Currency(reward.currency, reward.qty)
-						or Item(reward.itemID, reward.qty), 1, 1, 1)
+					local lineLabel = reward.currency and ns.Format.Currency(reward.currency, reward.qty)
+						or Item(reward.itemID, reward.qty)
+					local est = reward.estimate
+					if est and est.value > 0 then
+						lineLabel = lineLabel .. "  " .. Color("muted", format("est. %s (%d bag%s)",
+							Money(est.value * reward.qty), est.opens, est.opens == 1 and "" or "s"))
+					end
+					tip:AddLine(lineLabel, 1, 1, 1)
 				end
+				tip:AddLine(" ")
+				tip:AddLine("Turn on Count estimated value of patron bags and Moxie in Patron orders options to include "
+					.. "learned bag values.", 0.4, 0.8, 1, true)
 			end)
 	end
 end

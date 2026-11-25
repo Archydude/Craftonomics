@@ -1,5 +1,12 @@
 # Changelog
 
+## 5.16.0
+- **Learned patron bag and Moxie values:** Craftonomics now learns what drops from **Artisan's Consortium Payout** bags and 600-Moxie **Surplus Reagents** bags as you open them, priced live from the auction house. Hover a bag or Artisan's Moxie reward on the Patron tab or order panel to see its drop rates, average quantities, and estimated value; right-click one (or type `/craftonomics bags`) to view or reset your learned history. Turn on **Count estimated value of patron bags and Moxie** in Patron orders options or the Patron tab's gear menu to include those estimates in order profits, sorting, and shopping buttons (off by default, so profits keep counting real gold alone). Patron orders now also recognize knowledge rewards across all eight Midnight crafting professions.
+- **Crafting and concentration strategy hierarchy:** your **Crafting strategy** now always takes priority over your **Concentration strategy** (with **Cheapest materials** ignoring concentration choices and **Use what I own** only picking among mixes with the same out-of-pocket cost). When using concentration on the crafting page, profitable mixes are now preferred over losing zero-concentration mixes, and switching strategy or toggling **Concentrate** updates the form right away.
+- Fixed: in the **Ledger**, items you posted on the auction house now sync directly when you visit the auction house and when you confirm a post, keeping the **Posted** column, **On the auction house** total, and **Check what I have** accurate.
+- Fixed: on the **Patron** tab, **Next order** no longer stays stuck busy after claiming an order, and the Patron order list recovers cleanly if the game's orders tab stalls while loading.
+- Fixed: recipes you learn while the profession window is closed now show their profit on the recipe list without reloading, and Bind-on-Equip raid and world gear drops now reliably show their auction house price and accurate **Vendor Sell** value on tooltips.
+
 ## 5.15.1
 - Fixed: mass disenchanting your own crafts runs much faster without freezing on large ledgers.
 - Fixed: taking back a Ledger write-off only restores that item's rank instead of undoing other ranks as well, and Enchanting Vellums reliably use their vendor price.

@@ -52,9 +52,20 @@ end
 function Craft.Busy()
 	if next(crafting) then return true end
 	local now = GetTime()
-	for _, waiting in ipairs({ claiming, completing }) do
-		for _, asked in pairs(waiting) do
-			if now - asked < ANSWER_WAIT then return true end
+	local claimed = C_CraftingOrders.GetClaimedOrder()
+	local claimedID = claimed and claimed.orderID
+	for orderID, asked in pairs(claiming) do
+		if orderID == claimedID then
+			claiming[orderID] = nil
+		elseif now - asked < ANSWER_WAIT then
+			return true
+		end
+	end
+	for orderID, asked in pairs(completing) do
+		if completed[orderID] then
+			completing[orderID] = nil
+		elseif now - asked < ANSWER_WAIT then
+			return true
 		end
 	end
 	return false
@@ -229,8 +240,13 @@ function handlers.CRAFTINGORDERS_FULFILL_ORDER_RESPONSE(result, orderID)
 	end
 end
 
-handlers.CRAFTINGORDERS_CLAIMED_ORDER_ADDED = function() end
-handlers.CRAFTINGORDERS_CLAIMED_ORDER_REMOVED = function() end
+function handlers.CRAFTINGORDERS_CLAIMED_ORDER_ADDED()
+	local order = C_CraftingOrders.GetClaimedOrder()
+	if order and order.orderID then claiming[order.orderID] = nil end
+end
+function handlers.CRAFTINGORDERS_CLAIMED_ORDER_REMOVED()
+	if not C_CraftingOrders.GetClaimedOrder() then wipe(completing) end
+end
 
 function handlers.UNIT_SPELLCAST_INTERRUPTED(unit, _, spellID)
 	if unit == "player" and next(crafting) then craftFailed(spellID) end

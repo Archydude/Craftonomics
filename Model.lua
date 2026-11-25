@@ -396,7 +396,7 @@ local function bestCraftMaterials(ctx, model)
 	if not (plan and differsFromForm(schematic, transaction, plan.overrides)) then return end
 
 	local planned = Model.Craft({ recipeInfo = ctx.recipeInfo, schematic = schematic, transaction = transaction,
-		isRecraft = ctx.isRecraft, overrides = plan.overrides })
+		isRecraft = ctx.isRecraft, overrides = plan.overrides, procs = ns.db.countProcs })
 	-- With no sale price, both are a loss of what the materials cost: the gain is what they save.
 	local gain = planned.total - model.realProfit
 	-- Worth it even when it costs more, if it makes a better rank than the form.
@@ -404,13 +404,18 @@ local function bestCraftMaterials(ctx, model)
 	local otherRank = formQuality and plan.quality ~= formQuality
 	local betterRank = otherRank and plan.quality > formQuality
 	-- Or, with a concentration strategy that picks for it, when it takes less than the form does.
-	local savesConcentration = ns.OptimizesFor() and plan.concentration
-		and (ns.Blizzard.FormConcentrationCost(ctx.recipeInfo.recipeID, schematic, transaction) or 0) > plan.concentration
+	local planConc = plan.concentration or 0
+	local formConc = ns.Blizzard.IsConcentrating(transaction)
+		and (ns.Blizzard.FormConcentrationCost(ctx.recipeInfo.recipeID, schematic, transaction) or 0) or 0
+	local savesConcentration = ns.db.craftStrategy ~= "cheapest" and ns.OptimizesFor() and formConc > planConc
+		and (planConc > 0 or ns.Model.Shown(planned) > 0 or model.realProfit <= 0)
 	-- Or, with "Use what I own", whatever it's worth: spending less is the point.
 	local usesOwned = ns.db.craftStrategy == "owned"
-	if gain <= 0 and not betterRank and not savesConcentration and not usesOwned then return end
+	-- Or, with "Cheapest materials", whenever the planned materials cost less than the form's.
+	local savesCost = ns.db.craftStrategy == "cheapest" and planned.cost < model.realCost
+	if gain <= 0 and not betterRank and not savesConcentration and not usesOwned and not savesCost then return end
 	return { picks = plan.overrides, list = plan.picks, concentrate = false, concentration = plan.concentration,
-		savesConcentration = savesConcentration and true or false, usesOwned = usesOwned, gain = gain,
+		savesConcentration = savesConcentration and true or false, usesOwned = usesOwned, savesCost = savesCost, gain = gain,
 		fromQuality = otherRank and formQuality or nil, toQuality = otherRank and plan.quality or nil }
 end
 
@@ -611,6 +616,134 @@ function Model.Craft(ctx)
 	return model
 end
 
+---------------------------------------------------------------------------
+-- Auto-learned drop rates and live AH valuation for patron & Moxie bags
+---------------------------------------------------------------------------
+
+-- True when `itemID` is a tracked patron reward bag or 600-Moxie vendor bag.
+function Model.IsTrackedBag(itemID)
+	if not itemID then return false end
+	if ns.PATRON_BAGS and ns.PATRON_BAGS[itemID] then return true end
+	if ns.db and ns.db.bagDrops and ns.db.bagDrops[itemID] then return true end
+	return ns.db and ns.db.seenPatronBags and ns.db.seenPatronBags[itemID] == true or false
+end
+
+-- Remembers non-sellable, non-knowledge patron rewards so any newly added bag
+-- item ID can be learned automatically if you open it later.
+function Model.RecordSeenPatronBag(itemID)
+	local seen = ns.db and ns.db.seenPatronBags
+	if not (seen and type(itemID) == "number" and itemID > 0) then return end
+	if ns.KNOWLEDGE_ITEMS and ns.KNOWLEDGE_ITEMS[itemID] then return end
+	seen[itemID] = true
+end
+
+-- Records one opened container's looted items (`itemID -> qty`), incrementing
+-- open count, total quantity, and how many opens dropped each item.
+function Model.RecordBagOpen(bagID, lootedItems, openCount, dropCounts)
+	if not (ns.db and type(bagID) == "number" and bagID > 0 and type(lootedItems) == "table") then return end
+	local hasAny = false
+	for _, qty in pairs(lootedItems) do
+		if type(qty) == "number" and qty > 0 then
+			hasAny = true
+			break
+		end
+	end
+	if not hasAny then return end
+
+	local opensToAdd = (type(openCount) == "number" and openCount >= 1) and math.floor(openCount) or 1
+	ns.db.bagDrops = ns.db.bagDrops or {}
+	local entry = ns.db.bagDrops[bagID]
+	if not entry then
+		entry = { opens = 0, items = {}, drops = {} }
+		ns.db.bagDrops[bagID] = entry
+	end
+	entry.items = entry.items or {}
+	entry.drops = entry.drops or {}
+	entry.opens = (entry.opens or 0) + opensToAdd
+	for itemID, qty in pairs(lootedItems) do
+		if type(itemID) == "number" and itemID > 0 and type(qty) == "number" and qty > 0 then
+			entry.items[itemID] = (entry.items[itemID] or 0) + qty
+			local dropped = (type(dropCounts) == "table" and type(dropCounts[itemID]) == "number" and dropCounts[itemID] > 0)
+				and math.min(math.floor(dropCounts[itemID]), opensToAdd) or 1
+			entry.drops[itemID] = (entry.drops[itemID] or 0) + dropped
+		end
+	end
+	return entry.opens
+end
+
+-- Clears learned bag drops for `bagID`, or all bags when `bagID` is nil.
+function Model.ResetBagDrops(bagID)
+	local drops = ns.db and ns.db.bagDrops
+	if not drops then return end
+	if bagID then
+		drops[bagID] = nil
+	elseif wipe then
+		wipe(drops)
+	else
+		for k in pairs(drops) do drops[k] = nil end
+	end
+end
+
+local function isBoundItem(itemID)
+	local bind = C_Item and C_Item.GetItemInfo and select(14, C_Item.GetItemInfo(itemID))
+	return bind ~= nil and not SELLABLE_BINDS[bind]
+end
+
+-- Expected gold value and per-item drop breakdown for `bagID`, priced at current
+-- live AH sale prices (with `ahCut` applied). Nil when no opens have been learned.
+function Model.BagEstimate(bagID)
+	local entry = ns.db and ns.db.bagDrops and ns.db.bagDrops[bagID]
+	local opens = entry and entry.opens
+	if not (opens and opens > 0) then return end
+
+	local keep = ns.db.ahCut and (1 - ns.AH_CUT) or 1
+	local breakdown, total, unpriced = {}, 0, 0
+	for itemID, totalQty in pairs(entry.items or {}) do
+		local dropCount = (entry.drops and entry.drops[itemID]) or opens
+		local pct = math.min(dropCount / opens, 1)
+		local avgQty = totalQty / opens
+		local bound = isBoundItem(itemID)
+		local rawPrice = not bound and ns.Prices.Sale("item:" .. itemID, itemID) or nil
+		local unitPrice = rawPrice and (rawPrice * keep) or nil
+		local expected = unitPrice and (avgQty * unitPrice) or 0
+		total = total + expected
+		if not bound and not unitPrice then unpriced = unpriced + 1 end
+		breakdown[#breakdown + 1] = {
+			itemID = itemID,
+			dropCount = dropCount,
+			totalQty = totalQty,
+			pct = pct,
+			avgQty = avgQty,
+			unitPrice = unitPrice,
+			expected = expected,
+			bound = bound or nil,
+		}
+	end
+	table.sort(breakdown, function(a, b)
+		if a.expected ~= b.expected then return a.expected > b.expected end
+		if a.avgQty ~= b.avgQty then return a.avgQty > b.avgQty end
+		return a.itemID < b.itemID
+	end)
+	return { value = total, opens = opens, breakdown = breakdown, unpriced = unpriced }
+end
+
+-- Live AH estimate per 1 Moxie for `currencyID`, derived from its 600-Moxie Surplus bag.
+function Model.MoxieEstimate(currencyID)
+	local map = ns.MOXIE_BAGS and ns.MOXIE_BAGS[currencyID]
+	if not map then return end
+	local est = Model.BagEstimate(map.bagID)
+	if not est then return end
+	return {
+		value = est.value / map.cost,
+		bagID = map.bagID,
+		bagValue = est.value,
+		cost = map.cost,
+		opens = est.opens,
+		breakdown = est.breakdown,
+		unpriced = est.unpriced,
+	}
+end
+
 -- For an order open in the form: the materials that make it the most gold while
 -- still reaching its minimum quality (the same picks as the Patron orders list),
 -- when the form has something else. { picks = slotIndex -> itemID, list = { {
@@ -722,28 +855,67 @@ function Model.Order(ctx)
 	end
 
 	-- What an NPC (patron) order gives on top of the commission. Sellable items
-	-- count toward profit; currencies (Moxie...) have no gold value. An item that
-	-- could be sold but has no price is `unpriced`: it isn't counted either.
+	-- count toward profit; non-sellable rewards and Moxie only count when
+	-- countPatronBags is enabled and use learned drops priced live from the AH.
 	model.rewards = {}
 	model.knowledge = 0
-	local rewardsValue = 0
+	local rewardsValue, estimatedValue = 0, 0
+	local countBags = ns.db.countPatronBags == true
 	for _, reward in ipairs(order.npcOrderRewards or {}) do
 		local qty = reward.count or 1
 		local itemID = reward.itemLink and C_Item.GetItemInfoInstant(reward.itemLink)
 		if itemID then
 			local price = ns.Prices.Sale(reward.itemLink, itemID)
-			local value = price and price * qty
-			local knowledge = ns.KNOWLEDGE_ITEMS[itemID]
+			local sellable = canBeSold(reward.itemLink)
+			local value = price and price * qty or nil
+			local estimated, estimate
+			if not value then
+				if not sellable then Model.RecordSeenPatronBag(itemID) end
+				estimate = Model.BagEstimate(itemID)
+				if countBags and estimate and estimate.value > 0 then
+					value = estimate.value * qty
+					estimated = true
+				end
+			end
+			local knowledge = ns.KNOWLEDGE_ITEMS and ns.KNOWLEDGE_ITEMS[itemID]
 			rewardsValue = rewardsValue + (value or 0)
+			if estimated and value then estimatedValue = estimatedValue + value end
 			model.knowledge = model.knowledge + (knowledge or 0) * qty
-			model.rewards[#model.rewards + 1] = { itemID = itemID, qty = qty, value = value, knowledge = knowledge,
-				unpriced = not value and canBeSold(reward.itemLink) or nil }
+			model.rewards[#model.rewards + 1] = {
+				itemID = itemID,
+				qty = qty,
+				value = value,
+				estimated = estimated,
+				estimate = estimate,
+				knowledge = knowledge,
+				unpriced = not value and sellable or nil,
+			}
 		elseif reward.currencyType then
-			local currency = C_CurrencyInfo.GetCurrencyInfo(reward.currencyType)
-			if currency then model.rewards[#model.rewards + 1] = { currency = currency, qty = qty } end
+			local currency = C_CurrencyInfo and C_CurrencyInfo.GetCurrencyInfo
+				and C_CurrencyInfo.GetCurrencyInfo(reward.currencyType)
+			local estimate = Model.MoxieEstimate(reward.currencyType)
+			local value, estimated
+			if countBags and estimate and estimate.value > 0 then
+				value = estimate.value * qty
+				estimated = true
+			end
+			if currency or value then
+				rewardsValue = rewardsValue + (value or 0)
+				if estimated and value then estimatedValue = estimatedValue + value end
+				model.rewards[#model.rewards + 1] = {
+					currency = currency or { name = "Currency " .. reward.currencyType },
+					currencyType = reward.currencyType,
+					qty = qty,
+					value = value,
+					estimated = estimated,
+					estimate = estimate,
+				}
+			end
 		end
 	end
 
+	model.estimatedRewardsValue = estimatedValue
+	model.sellableRewardsValue = rewardsValue - estimatedValue
 	model.total = model.receive - model.cost + rewardsValue
 
 	-- What resourcefulness gives back on average (see Procs.Expected): of what you

@@ -182,6 +182,8 @@ end
 local function earnsMore(profit, points, otherProfit, otherPoints)
 	if (profit > 0) ~= (otherProfit > 0) then return profit > 0 end
 	if profit <= 0 then return profit > otherProfit end
+	if (points <= 0) ~= (otherPoints <= 0) then return points <= 0 end
+	if points <= 0 then return profit > otherProfit end
 	return profit / points > otherProfit / otherPoints
 end
 Planner.EarnsMore = earnsMore
@@ -463,28 +465,44 @@ local function planCraft(ctx, slots, context)
 	-- later one only wins on those).
 	local goal = ns.OptimizesFor()
 	local ownedFirst = ns.db.craftStrategy == "owned"
+	local cheapestOnly = ns.db.craftStrategy == "cheapest"
+	local concentrating = ns.Blizzard.IsConcentrating(transaction)
 	-- "gold": rank -> what a mix that makes it earns (see earnings), priced when two are first compared.
 	local profits = {}
-	local function beats(mix, quality, concentration, found)
-		if goal == "gold" and concentration and found.concentration then
-			local profitOf = profits[quality]
-			if not profitOf then
-				profitOf = earnings(ns.Model.Craft({ recipeInfo = recipeInfo, schematic = schematic, transaction = transaction,
-					isRecraft = ctx.isRecraft, overrides = (picksOf(slots, found.mix)), procs = true }), found.mix)
-				profits[quality] = profitOf
-			end
-			local profit, foundProfit = profitOf(mix), profitOf(found.mix)
-			if earnsMore(profit, concentration, foundProfit, found.concentration) then return true end
-			if earnsMore(foundProfit, found.concentration, profit, concentration) then return false end
-		elseif goal == "least" and concentration and found.concentration and concentration ~= found.concentration then
-			return concentration < found.concentration
+	local function profitFor(quality, foundMix)
+		local profitOf = profits[quality]
+		if not profitOf then
+			profitOf = earnings(ns.Model.Craft({ recipeInfo = recipeInfo, schematic = schematic, transaction = transaction,
+				isRecraft = ctx.isRecraft, overrides = (picksOf(slots, foundMix)), procs = true }), foundMix)
+			profits[quality] = profitOf
 		end
-		return ownedFirst and mix.buy < found.mix.buy
+		return profitOf
+	end
+	local function beats(mix, quality, concentration, found)
+		if ownedFirst and mix.buy ~= found.mix.buy then return mix.buy < found.mix.buy end
+		if concentrating and goal and not cheapestOnly then
+			local c, fc = concentration or 0, found.concentration or 0
+			if goal == "gold" then
+				local profitOf = profitFor(quality, found.mix)
+				local profit, foundProfit = profitOf(mix), profitOf(found.mix)
+				if earnsMore(profit, c, foundProfit, fc) then return true end
+				if earnsMore(foundProfit, fc, profit, c) then return false end
+			elseif goal == "least" and c ~= fc then
+				if (c == 0) ~= (fc == 0) then
+					local profitOf = profitFor(quality, found.mix)
+					local profit, foundProfit = profitOf(mix), profitOf(found.mix)
+					if (profit > 0) ~= (foundProfit > 0) then return profit > 0 end
+				end
+				return c < fc
+			end
+		end
+		return false
 	end
 	local known = predictionsFor(context)
 	local deadline = debugprofilestop() + PLAN_BUDGET_MS
 	local byQuality = {}
 	local ways = {} -- rank -> how many mixes make it
+	local waysByBuy = {} -- rank -> { buy -> count }, for "owned"
 	for _, mix in ipairs(mixesOf(slots)) do
 		local key = mixKey(slots, mix)
 		local predicted = known[key]
@@ -499,6 +517,14 @@ local function planCraft(ctx, slots, context)
 		if predicted then quality, concentration = predicted[1], predicted[2] end
 		if quality then
 			ways[quality] = (ways[quality] or 0) + 1
+			if ownedFirst then
+				local forRank = waysByBuy[quality]
+				if not forRank then
+					forRank = {}
+					waysByBuy[quality] = forRank
+				end
+				forRank[mix.buy] = (forRank[mix.buy] or 0) + 1
+			end
 			local found = byQuality[quality]
 			if not found or beats(mix, quality, concentration, found) then
 				byQuality[quality] = { mix = mix, cost = mix.cost, buy = mix.buy, short = mix.buy > 0, quality = quality,
@@ -512,7 +538,8 @@ local function planCraft(ctx, slots, context)
 	local options = {}
 	for _, found in pairs(byQuality) do options[#options + 1] = found end
 	local best = Planner.Choose(options)
-	return planOf(best.mix, best.quality, best.concentration, ways[best.quality])
+	local rankWays = ownedFirst and waysByBuy[best.quality][best.buy] or ways[best.quality]
+	return planOf(best.mix, best.quality, best.concentration, rankWays)
 end
 
 -- Which qualities the recipe on the crafting page should use, with what's in the

@@ -25,10 +25,20 @@ local boxes = {}
 local applied = {}
 -- Whether the checkbox turned concentration on for the open order.
 local concentrated = false
+-- Whether Blizzard's Concentrate box was checked on the crafting page at the last check.
+local lastConcentrating
 
 local function forget()
 	wipe(applied)
 	concentrated = false
+	lastConcentrating = nil
+end
+
+-- Clears remembered picks so the next redraw re-applies (e.g. after a strategy change),
+-- while keeping `concentrated` so unticking the checkbox still turns off concentration it enabled.
+function Best.Forget()
+	wipe(applied)
+	lastConcentrating = nil
 end
 
 local function keyOf(model)
@@ -52,7 +62,14 @@ end
 -- After each panel redraw: with the checkbox on, puts the order's or recipe's
 -- best materials in, once.
 function Best.Check(model)
-	if not (ns.db.bestMaterials and model and model.best) then return end
+	if not (ns.db.bestMaterials and model) then return end
+	if model.kind == "craft" then
+		if lastConcentrating ~= nil and lastConcentrating ~= model.concentrating then
+			wipe(applied)
+		end
+		lastConcentrating = model.concentrating
+	end
+	if not model.best then return end
 	local key = keyOf(model)
 	if applied[key] then return end
 	applied[key] = true

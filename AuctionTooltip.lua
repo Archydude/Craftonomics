@@ -22,7 +22,37 @@ local TSM_NAMES = {
 
 -- Items that can't go on the auction house: bound when picked up, quest items,
 -- bound to your account.
-local UNSELLABLE_BINDS = { [1] = true, [4] = true, [7] = true, [8] = true }
+local ItemBind = Enum and Enum.ItemBind or {}
+local UNSELLABLE_BINDS = {
+	[ItemBind.OnAcquire or 1] = true,
+	[ItemBind.Quest or 4] = true,
+	[ItemBind.ToWoWAccount or 7] = true,
+	[ItemBind.ToBnetAccount or 8] = true,
+	[ItemBind.ToBnetAccountUntilEquipped or 9] = true,
+}
+
+-- Bonus IDs on raid zone drops can turn a BoP template into a BoE (or Warbound
+-- until equipped) item, so tooltip binding text overrides the base template.
+local BOUND_LINES = {}
+local TRADEABLE_LINES = {}
+for _, globalName in ipairs({
+	"ITEM_SOULBOUND",
+	"ITEM_BIND_ON_PICKUP",
+	"ITEM_BIND_QUEST",
+	"ITEM_ACCOUNTBOUND",
+	"ITEM_BNETACCOUNTBOUND",
+	"ITEM_ACCOUNTBOUND_UNTIL_EQUIP",
+	"ITEM_BIND_TO_ACCOUNT",
+	"ITEM_BIND_TO_BNETACCOUNT",
+	"ITEM_BIND_TO_ACCOUNT_UNTIL_EQUIP",
+}) do
+	local text = _G[globalName]
+	if type(text) == "string" and text ~= "" then BOUND_LINES[text] = true end
+end
+for _, globalName in ipairs({ "ITEM_BIND_ON_EQUIP", "ITEM_BIND_ON_USE" }) do
+	local text = _G[globalName]
+	if type(text) == "string" and text ~= "" then TRADEABLE_LINES[text] = true end
+end
 
 -- The game's money text, with a minus for a loss: it can't show one by itself
 -- (a loss of 16s 66c came out as 83s 34c).
@@ -48,10 +78,28 @@ local function locationOf(data)
 	if found and there then return location end
 end
 
--- Whether the item can't be posted: bound, or a quest item.
-local function unsellable(itemID, location)
+-- Binding state directly from the tooltip's rendered lines, so bonus IDs that
+-- flip BoP <-> BoE or add Warbound Until Equipped win over base item data.
+-- Returns true if bound/unsellable, false if explicitly tradeable, nil if unknown.
+local function tooltipBindState(data)
+	local lines = data and data.lines
+	if type(lines) ~= "table" then return nil end
+	for _, line in ipairs(lines) do
+		local text = line and line.leftText
+		if text and not (issecretvalue and issecretvalue(text)) then
+			if BOUND_LINES[text] then return true end
+			if TRADEABLE_LINES[text] then return false end
+		end
+	end
+	return nil
+end
+
+-- Whether the item can't be posted: bound, Warbound, or a quest item.
+local function unsellable(itemID, link, location, data)
 	if location and C_Item.IsBound(location) then return true end
-	local bind = select(14, C_Item.GetItemInfo(itemID))
+	local fromTooltip = tooltipBindState(data)
+	if fromTooltip ~= nil then return fromTooltip end
+	local bind = select(14, C_Item.GetItemInfo(link or itemID))
 	return bind ~= nil and UNSELLABLE_BINDS[bind] == true
 end
 
@@ -132,13 +180,17 @@ local function onItem(tooltip, data)
 	local itemID = data and data.id
 	if type(itemID) ~= "number" or (issecretvalue and issecretvalue(itemID)) then return end
 	local location = locationOf(data)
-	-- The auction lines only for items you can post.
-	local postable = not unsellable(itemID, location)
 	local _, link = TooltipUtil.GetDisplayedItem(tooltip)
 	if link and issecretvalue and issecretvalue(link) then link = nil end
+	if not link and location and C_Item.GetItemLink then
+		local ok, bagLink = pcall(C_Item.GetItemLink, location)
+		if ok and bagLink and not (issecretvalue and issecretvalue(bagLink)) then link = bagLink end
+	end
 	-- A recipe's tooltip also shows the item it makes, and on a vendor the game can
 	-- hand back that item's link instead of the recipe's: price the recipe itself.
 	if link and C_Item.GetItemInfoInstant(link) ~= itemID then link = nil end
+	-- The auction lines only for items you can post.
+	local postable = not unsellable(itemID, link, location, data)
 	local count = location and C_Item.GetStackCount(location) or 1
 	-- A stack in your bags shows the whole stack's amounts only while Shift is held.
 	-- Nothing here redraws the tooltip when Shift changes: the game redraws a bag
@@ -151,7 +203,7 @@ local function onItem(tooltip, data)
 	-- What a vendor charges for one (nil when no vendor sells it, or nobody knows),
 	-- and what a vendor pays for one (nil when a vendor won't buy it).
 	local vendorBuy = db.tipVendorBuy and ns.Prices.Vendor(itemID) or nil
-	local vendorSell = db.tipVendorSell and select(11, C_Item.GetItemInfo(itemID)) or nil
+	local vendorSell = db.tipVendorSell and select(11, C_Item.GetItemInfo(link or itemID)) or nil
 	if vendorSell and vendorSell <= 0 then vendorSell = nil end
 	-- Saved TSM prices already have their own line (Show saved TSM prices).
 	local price, from

@@ -390,7 +390,8 @@ function Blizzard.PredictQuality(recipeID, schematic, transaction, overrides, ad
 	local reagents = predictionReagents(recipeID, schematic, transaction, overrides, advice)
 	local info, concentrating = operationInfo(recipeID, reagents, transaction)
 	if not info then return nil end
-	return info.craftingQuality, concentrating and (info.concentrationCost or 0) or nil
+	local cost = concentrating and info.concentrationCost or 0
+	return info.craftingQuality, cost > 0 and cost or nil
 end
 
 -- The game's answer about the recipe on the crafting page ("operation info"), with
@@ -805,34 +806,95 @@ function Blizzard.WatchOrderList(onChange)
 	page.BrowseFrame:HookScript("OnHide", onChange)
 end
 
--- Blizzard's order list can wait forever: at a crafting table the window may
--- open on another expansion's profession first (Khaz Algar) and switch, and the
--- answer to the first search is then dropped while its loading spinner stays.
--- So when the spinner has turned this long with the list on screen, the orders
--- are asked for again the way clicking a tab does it, at most this many times.
-local STUCK_SECONDS, STUCK_RETRIES = 5, 2
+-- Blizzard's order list can get stuck spinning: at a crafting table the window
+-- may open on another expansion's profession first (Khaz Algar) and switch, or
+-- cache a stale request from a closed session so the answer is dropped while its
+-- loading spinner stays. Recover promptly on profession-switch / re-init events
+-- (instead of waiting a full 5 seconds) and clear stale cached requests on close.
+local STUCK_SETTLE = 0.15
+local STUCK_SECONDS, STUCK_RETRIES = 1.5, 3
+local watchingStuck = false
 
 function Blizzard.WatchStuckOrderList()
 	local page = ProfessionsFrame.OrdersPage
 	local spinner = page and page.BrowseFrame and page.BrowseFrame.OrderList.LoadingSpinner
-	if not (spinner and page.ClearCachedRequests and page.StartDefaultSearch) then return end
-	local waiting, retries = nil, 0
-	local function wait()
+	if watchingStuck or not (spinner and page.ClearCachedRequests and page.StartDefaultSearch) then return end
+	watchingStuck = true
+
+	local waiting, retries, startedProf, initCount, crafterRetried = nil, 0, nil, 0, false
+	local function currentProf()
+		local info = C_TradeSkillUI and C_TradeSkillUI.GetChildProfessionInfo and C_TradeSkillUI.GetChildProfessionInfo()
+		return info and info.professionID or nil
+	end
+
+	local schedule
+	local function retry()
+		if not spinner:IsVisible() or retries >= STUCK_RETRIES then return end
+		retries = retries + 1
+		startedProf = currentProf()
+		page:ClearCachedRequests()
+		page:StartDefaultSearch()
+		-- Still turning (it doesn't show again), so wait again.
+		if spinner:IsShown() then schedule(STUCK_SECONDS) end
+	end
+	schedule = function(delay)
 		local token = {}
 		waiting = token
-		C_Timer.After(STUCK_SECONDS, function()
-			if waiting ~= token or not spinner:IsVisible() or retries >= STUCK_RETRIES then return end
-			retries = retries + 1
-			page:ClearCachedRequests()
-			page:StartDefaultSearch()
-			-- Still turning (it doesn't show again), so wait again.
-			if spinner:IsShown() then wait() end
+		C_Timer.After(delay, function()
+			if waiting ~= token then return end
+			retry()
 		end)
 	end
-	spinner:HookScript("OnShow", wait)
-	spinner:HookScript("OnHide", function()
-		waiting, retries = nil, 0
+
+	local function onSpinnerShow()
+		retries, initCount, crafterRetried = 0, 0, false
+		startedProf = currentProf()
+		schedule(STUCK_SECONDS)
+	end
+	local function onSpinnerHide()
+		waiting, retries, startedProf, initCount, crafterRetried = nil, 0, nil, 0, false
+	end
+	local function triggerFastRetry()
+		if not spinner:IsVisible() or retries >= STUCK_RETRIES then return end
+		schedule(STUCK_SETTLE)
+	end
+
+	spinner:HookScript("OnShow", onSpinnerShow)
+	spinner:HookScript("OnHide", onSpinnerHide)
+	page:HookScript("OnHide", function() page:ClearCachedRequests() end)
+	if page.Init then
+		hooksecurefunc(page, "Init", function()
+			if not spinner:IsVisible() then return end
+			initCount = initCount + 1
+			local prof = currentProf()
+			if initCount >= 2 or (prof ~= nil and prof ~= startedProf) then
+				startedProf = prof
+				triggerFastRetry()
+			end
+		end)
+	end
+
+	local eventFrame = CreateFrame("Frame")
+	eventFrame:RegisterEvent("TRADE_SKILL_DATA_SOURCE_CHANGED")
+	eventFrame:RegisterEvent("TRADE_SKILL_LIST_UPDATE")
+	eventFrame:RegisterEvent("CRAFTINGORDERS_SHOW_CRAFTER")
+	eventFrame:SetScript("OnEvent", function(_, event)
+		if not spinner:IsVisible() then return end
+		if event == "CRAFTINGORDERS_SHOW_CRAFTER" then
+			if not crafterRetried then
+				crafterRetried = true
+				triggerFastRetry()
+			end
+			return
+		end
+		local prof = currentProf()
+		if prof and prof ~= startedProf then
+			startedProf = prof
+			triggerFastRetry()
+		end
 	end)
+
+	if spinner:IsVisible() then onSpinnerShow() end
 end
 
 -- The order list, for placing things next to it.

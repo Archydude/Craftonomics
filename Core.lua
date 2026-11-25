@@ -65,6 +65,8 @@ local function loadSettings()
 	db.bestSortMore = db.bestSortMore or {}
 	db.bestIgnored = db.bestIgnored or {} -- recipes the Best crafts list hides: recipeID -> true
 	db.bestPinned = db.bestPinned or {} -- recipes at the top of the Best crafts list: recipeID -> true
+	db.bagDrops = db.bagDrops or {} -- learned patron/Moxie bag opens: bagItemID -> { opens, items, drops }
+	db.seenPatronBags = db.seenPatronBags or {} -- non-sellable item rewards seen on patron orders: itemID -> true
 	return db
 end
 
@@ -219,6 +221,18 @@ SlashCmdList.CRAFTONOMICS = function(msg)
 	if command == "testplan" then
 		-- Testing: every material mix the crafting page's plan tries, and its rank.
 		if not ns.Planner.Explain() then ns.Shopping.Say("Testing: open a recipe on the crafting page first.") end
+		return
+	end
+	if command == "bags" or command == "rewards" then
+		if ns.QUALITY_CRAFTING and ns.Options.OpenBagDrops then
+			ns.Options.OpenBagDrops()
+		else
+			ns.Shopping.Say("Learned patron bag drops are only used on Retail.")
+		end
+		return
+	end
+	if command == "testbags" then
+		if ns.Gone and ns.Gone.ExplainBags then ns.Gone.ExplainBags() end
 		return
 	end
 	ns.Options.Open()

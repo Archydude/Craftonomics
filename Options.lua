@@ -34,13 +34,20 @@ function Options.Open()
 	Settings.OpenToCategory(category:GetID())
 end
 
+local STRATEGY_KEYS = {
+	craftStrategy = true, concentrationStrategy = true,
+	patronMaterials = true, patronReach = true, concentrationFor = true,
+	countPatronBags = true, countProcs = true, ahCut = true, provider = true, matSource = true, saleSource = true, vendorOnAH = true,
+}
+
 -- Any change re-places and redraws the panel. Prices and the concentration
 -- choice change the patron orders' picks too.
-local function onChanged()
+local function onChanged(key)
+	if (not key or STRATEGY_KEYS[key]) and ns.Best and ns.Best.Forget then ns.Best.Forget() end
 	ns.Planner.Reset()
 	ns.Panel.Place()
 	ns.Panel.Refresh()
-	ns.Patron.Redraw()
+	if key == "countPatronBags" and ns.Patron.Resort then ns.Patron.Resort() else ns.Patron.Redraw() end
 	ns.BestCrafts.Reprice(true)
 	ns.BestCraftsList.Refresh()
 	if ns.RecipeProfit then ns.RecipeProfit.Refresh() end
@@ -53,7 +60,14 @@ local RESAVE = { saveTSMPrices = true, saveItems = true, provider = true, matSou
 
 -- Changes a setting from elsewhere (the Best crafts list), as the options would.
 function Options.Set(key, value)
-	if settings[key] then settings[key]:SetValue(value) else ns.db[key] = value; onChanged() end
+	if settings[key] then settings[key]:SetValue(value) else ns.db[key] = value; onChanged(key) end
+end
+
+-- Refreshes calculations and lists after custom patron reward values change.
+function Options.NotifyRewardsChanged()
+	ns.Planner.Reset()
+	ns.Panel.Refresh()
+	if ns.Patron.Resort then ns.Patron.Resort() else ns.Patron.Redraw() end
 end
 
 function Options.Create()
@@ -87,8 +101,8 @@ function Options.Create()
 
 	local function setting(key, varType, name)
 		local s = Settings.RegisterAddOnSetting(page, "CRAFTONOMICS_" .. key:upper(), key, db, varType, name, ns.DEFAULTS[key])
-		s:SetValueChangedCallback(function(...)
-			onChanged(...)
+		s:SetValueChangedCallback(function()
+			onChanged(key)
 			-- A part of the auction house changed on its own: the choice for all of them reads it again.
 			if AH_PART[key] and allSetting and not settingAll then
 				settingAll = true
@@ -470,6 +484,13 @@ function Options.Create()
 			"and in the gear at the bottom of the Patron tab.")
 		checkbox("nextLosing", ns.NEXT_LOSING, ns.NEXT_LOSING_TIP ..
 			"\n\nYou can also switch it with the gear at the bottom of the Patron tab.")
+		header("Patron bags and Moxie")
+		checkbox("countPatronBags", ns.COUNT_PATRON_BAGS, ns.COUNT_PATRON_BAGS_TIP ..
+			"\n\nYou can also switch it with the gear at the bottom of the Patron tab.")
+		button("Learned bag drops", "View...", function() Options.OpenBagDrops() end,
+			"See every patron and 600-Moxie bag Craftonomics has learned from your opens, each item's drop percentage, " ..
+			"average quantity and live auction house value, or reset a bag's history.\n\n" ..
+			"Also in the Patron tab's gear menu, by right-clicking a bag or Moxie icon there, or with /craftonomics bags.")
 	end
 
 	---------------------------------------------------------------------------
@@ -578,4 +599,364 @@ function Options.Create()
 		"prices they are and how old.\n\nOnly items in those saved prices show it.")
 
 	Settings.RegisterAddOnCategory(category)
+end
+
+---------------------------------------------------------------------------
+-- Learned bag drops window (patron payout bags & 600-Moxie surplus bags)
+---------------------------------------------------------------------------
+
+local BAG_WINDOW_NAME = "CraftonomicsBagDrops"
+local BAG_ROW_HEIGHT = 26
+local DEFAULT_BAG_ID = 246585
+local bagWindow, selectedBagID
+
+local BAG_ORDER = {
+	246585, -- Artisan's Consortium Payout
+	260534, 260536, 260537, 260538, 260540, 260541, 260542, 260545, -- crafting Surplus bags
+	260539, 260543, 260544, -- gathering Surplus bags
+}
+
+local function bagDisplayName(bagID)
+	return (C_Item.GetItemNameByID and C_Item.GetItemNameByID(bagID))
+		or (C_Item.GetItemInfo and C_Item.GetItemInfo(bagID))
+		or (ns.PATRON_BAGS and ns.PATRON_BAGS[bagID])
+		or ("Item " .. bagID)
+end
+
+local function opensForBag(bagID)
+	local entry = ns.db and ns.db.bagDrops and ns.db.bagDrops[bagID]
+	return entry and entry.opens or 0
+end
+
+local function moxieCostForBag(bagID)
+	for _, map in pairs(ns.MOXIE_BAGS or {}) do
+		if map.bagID == bagID then return map.cost end
+	end
+end
+
+local function sortedBagIDs()
+	local seen, list = {}, {}
+	local function add(bagID)
+		if bagID and not seen[bagID] then
+			seen[bagID] = true
+			list[#list + 1] = bagID
+		end
+	end
+	for _, id in ipairs(BAG_ORDER) do add(id) end
+	for id in pairs(ns.db and ns.db.bagDrops or {}) do add(id) end
+	return list
+end
+
+local function bagDropdownText(bagID)
+	local opens = opensForBag(bagID)
+	local name = bagDisplayName(bagID)
+	return opens > 0 and format("%s (%d)", name, opens) or name
+end
+
+local function hasAnyBagDrops()
+	for _, entry in pairs(ns.db and ns.db.bagDrops or {}) do
+		if entry and entry.opens and entry.opens > 0 then return true end
+	end
+	return false
+end
+
+local function refreshBagWindow()
+	local w = bagWindow
+	if not (w and w:IsShown()) then return end
+	selectedBagID = selectedBagID or DEFAULT_BAG_ID
+	w.bagMenu:GenerateMenu()
+
+	local est = ns.Model.BagEstimate(selectedBagID)
+	local opens = est and est.opens or 0
+	if est then
+		local valueText = ns.Format.Money(est.value)
+		w.summary:SetText(format("Opened: %d bag%s     Estimated value: %s",
+			opens, opens == 1 and "" or "s", valueText))
+		local moxieCost = moxieCostForBag(selectedBagID)
+		if moxieCost and moxieCost > 0 then
+			local perOne = est.value / moxieCost
+			w.moxieLine:SetText(format("Per 1 Moxie (%d/bag): %s     Per 30 Moxie: %s",
+				moxieCost, ns.Format.Money(perOne), ns.Format.Money(perOne * 30)))
+			w.moxieLine:Show()
+		else
+			w.moxieLine:SetText(est.unpriced > 0
+				and format("%d unpriced item%s skipped; updates automatically with your live AH prices.",
+					est.unpriced, est.unpriced == 1 and "" or "s")
+				or "Updates automatically with your live auction house prices.")
+			w.moxieLine:Show()
+		end
+		w.empty:Hide()
+		w.scrollBox:SetDataProvider(CreateDataProvider(est.breakdown), ScrollBoxConstants.RetainScrollPosition)
+	else
+		w.summary:SetText("Opened: 0 bags")
+		local moxieCost = moxieCostForBag(selectedBagID)
+		if moxieCost and moxieCost > 0 then
+			w.moxieLine:SetText(format("Costs %d Artisan's Moxie per bag at the profession vendor.", moxieCost))
+			w.moxieLine:Show()
+		else
+			w.moxieLine:Hide()
+		end
+		w.empty:Show()
+		w.scrollBox:SetDataProvider(CreateDataProvider({}), ScrollBoxConstants.RetainScrollPosition)
+	end
+
+	w.resetOneBtn:SetEnabled(opens > 0)
+	w.resetAllBtn:SetEnabled(hasAnyBagDrops())
+end
+
+function Options.RefreshBagDrops()
+	refreshBagWindow()
+end
+
+StaticPopupDialogs.CRAFTONOMICS_RESET_BAG = {
+	text = "Reset learned drops for %s?",
+	button1 = "Reset",
+	button2 = CANCEL,
+	OnAccept = function(_, bagID)
+		ns.Model.ResetBagDrops(bagID)
+		Options.NotifyRewardsChanged()
+		refreshBagWindow()
+	end,
+	showAlert = true,
+	timeout = 0,
+	whileDead = true,
+	hideOnEscape = true,
+}
+
+StaticPopupDialogs.CRAFTONOMICS_RESET_ALL_BAGS = {
+	text = "Reset all learned patron and Moxie bag drops?",
+	button1 = "Reset all",
+	button2 = CANCEL,
+	OnAccept = function()
+		ns.Model.ResetBagDrops()
+		Options.NotifyRewardsChanged()
+		refreshBagWindow()
+	end,
+	showAlert = true,
+	timeout = 0,
+	whileDead = true,
+	hideOnEscape = true,
+}
+
+local function buildBagWindow()
+	local w = CreateFrame("Frame", BAG_WINDOW_NAME, UIParent, "BasicFrameTemplateWithInset")
+	w:SetSize(540, 460)
+	w:SetPoint("CENTER")
+	w:SetFrameStrata("DIALOG")
+	w:SetToplevel(true)
+	w:SetMovable(true)
+	w:EnableMouse(true)
+	w:RegisterForDrag("LeftButton")
+	w:SetScript("OnDragStart", w.StartMoving)
+	w:SetScript("OnDragStop", w.StopMovingOrSizing)
+	w:SetClampedToScreen(true)
+	tinsert(UISpecialFrames, BAG_WINDOW_NAME)
+	w:Hide()
+
+	local title = w:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+	title:SetPoint("TOP", 0, -5)
+	title:SetText("Craftonomics: learned bag drops")
+
+	local bagMenu = CreateFrame("DropdownButton", nil, w, "WowStyle1DropdownTemplate")
+	bagMenu:SetPoint("TOPLEFT", 16, -32)
+	bagMenu:SetWidth(420)
+	bagMenu:SetupMenu(function(_, root)
+		for _, id in ipairs(sortedBagIDs()) do
+			root:CreateRadio(bagDropdownText(id), function(v) return selectedBagID == v end, function(v)
+				selectedBagID = v
+				refreshBagWindow()
+			end, id)
+		end
+	end)
+	w.bagMenu = bagMenu
+
+	local summary = w:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+	summary:SetPoint("TOPLEFT", 18, -68)
+	summary:SetPoint("TOPRIGHT", -18, -68)
+	summary:SetJustifyH("LEFT")
+	w.summary = summary
+
+	local moxieLine = w:CreateFontString(nil, "OVERLAY", "GameFontDisable")
+	moxieLine:SetPoint("TOPLEFT", 18, -88)
+	moxieLine:SetPoint("TOPRIGHT", -18, -88)
+	moxieLine:SetJustifyH("LEFT")
+	w.moxieLine = moxieLine
+
+	local colItem = w:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+	colItem:SetPoint("TOPLEFT", 20, -114)
+	colItem:SetText("Item")
+
+	local colVal = w:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+	colVal:SetPoint("TOPRIGHT", -36, -114)
+	colVal:SetWidth(104)
+	colVal:SetJustifyH("RIGHT")
+	colVal:SetText("Value / bag")
+
+	local colAvg = w:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+	colAvg:SetPoint("RIGHT", colVal, "LEFT", -8, 0)
+	colAvg:SetWidth(72)
+	colAvg:SetJustifyH("RIGHT")
+	colAvg:SetText("Avg / bag")
+
+	local colPct = w:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+	colPct:SetPoint("RIGHT", colAvg, "LEFT", -8, 0)
+	colPct:SetWidth(58)
+	colPct:SetJustifyH("RIGHT")
+	colPct:SetText("Drop %")
+
+	local scrollBox = CreateFrame("Frame", nil, w, "WowScrollBoxList")
+	scrollBox:SetPoint("TOPLEFT", 14, -132)
+	scrollBox:SetPoint("BOTTOMRIGHT", -32, 46)
+	local scrollBar = CreateFrame("EventFrame", nil, w, "MinimalScrollBar")
+	scrollBar:SetPoint("TOPLEFT", scrollBox, "TOPRIGHT", 6, 0)
+	scrollBar:SetPoint("BOTTOMLEFT", scrollBox, "BOTTOMRIGHT", 6, 0)
+	w.scrollBox = scrollBox
+
+	local empty = w:CreateFontString(nil, "OVERLAY", "GameFontDisable")
+	empty:SetPoint("TOPLEFT", scrollBox, "TOPLEFT", 8, -8)
+	empty:SetPoint("RIGHT", scrollBox, "RIGHT", -8, 0)
+	empty:SetJustifyH("LEFT")
+	empty:SetText("No bags opened yet. Open this bag from your inventory and Craftonomics will record its drops automatically.")
+	w.empty = empty
+
+	local function drawBagRow(row, data)
+		if not row.built then
+			row.built = true
+			row.icon = row:CreateTexture(nil, "ARTWORK")
+			row.icon:SetSize(20, 20)
+			row.icon:SetPoint("LEFT", 6, 0)
+			row.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+
+			row.valText = row:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+			row.valText:SetPoint("RIGHT", -4, 0)
+			row.valText:SetWidth(104)
+			row.valText:SetJustifyH("RIGHT")
+
+			row.avgText = row:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+			row.avgText:SetPoint("RIGHT", row.valText, "LEFT", -8, 0)
+			row.avgText:SetWidth(72)
+			row.avgText:SetJustifyH("RIGHT")
+
+			row.pctText = row:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+			row.pctText:SetPoint("RIGHT", row.avgText, "LEFT", -8, 0)
+			row.pctText:SetWidth(58)
+			row.pctText:SetJustifyH("RIGHT")
+
+			row.nameText = row:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+			row.nameText:SetPoint("LEFT", row.icon, "RIGHT", 8, 0)
+			row.nameText:SetPoint("RIGHT", row.pctText, "LEFT", -8, 0)
+			row.nameText:SetJustifyH("LEFT")
+			row.nameText:SetWordWrap(false)
+
+			row:SetScript("OnEnter", function(self)
+				if not self.dropData then return end
+				local d = self.dropData
+				GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+				GameTooltip:SetItemByID(d.itemID)
+				GameTooltip:AddLine(" ")
+				local opens = opensForBag(selectedBagID)
+				GameTooltip:AddLine(format("Dropped in %d of %d bags (%d total).", d.dropCount, opens, d.totalQty),
+					1, 1, 1, true)
+				GameTooltip:Show()
+			end)
+			row:SetScript("OnLeave", GameTooltip_Hide)
+		end
+
+		row.dropData = data
+		local icon = C_Item.GetItemIconByID and C_Item.GetItemIconByID(data.itemID)
+		row.icon:SetTexture(icon or 134400)
+
+		local name = (ns.Format and ns.Format.ItemName and ns.Format.ItemName(data.itemID))
+			or (C_Item.GetItemNameByID and C_Item.GetItemNameByID(data.itemID))
+			or (C_Item.GetItemInfo and C_Item.GetItemInfo(data.itemID))
+		if name then
+			row.nameText:SetText(ns.Format and ns.Format.RarityColored and ns.Format.RarityColored(data.itemID, name) or name)
+		else
+			row.nameText:SetText("Item " .. data.itemID)
+			if Item and Item.CreateFromItemID then
+				w.requested = w.requested or {}
+				if not w.requested[data.itemID] then
+					w.requested[data.itemID] = true
+					local item = Item:CreateFromItemID(data.itemID)
+					if item and not item:IsItemEmpty() then
+						item:ContinueOnItemLoad(function()
+							if w.redrawPending then return end
+							w.redrawPending = true
+							C_Timer.After(0.2, function()
+								w.redrawPending = nil
+								refreshBagWindow()
+							end)
+						end)
+					end
+				end
+			end
+		end
+
+		row.pctText:SetText(format("%.0f%%", data.pct * 100))
+		row.avgText:SetText(format("%.2f", data.avgQty))
+		if data.bound then
+			row.valText:SetText(ns.Color("muted", "not sellable"))
+		elseif data.unitPrice then
+			row.valText:SetText(ns.Format.Money(data.expected))
+		else
+			row.valText:SetText(ns.Color("warning", "no price"))
+		end
+	end
+
+	local view = CreateScrollBoxListLinearView()
+	view:SetElementExtent(BAG_ROW_HEIGHT)
+	view:SetElementInitializer("Frame", drawBagRow)
+	ScrollUtil.InitScrollBoxListWithScrollBar(scrollBox, scrollBar, view)
+
+	local resetOneBtn = CreateFrame("Button", nil, w, "UIPanelButtonTemplate")
+	resetOneBtn:SetSize(124, 22)
+	resetOneBtn:SetPoint("BOTTOMLEFT", 16, 14)
+	resetOneBtn:SetText("Reset this bag")
+	resetOneBtn:SetScript("OnClick", function()
+		if selectedBagID then
+			StaticPopup_Show("CRAFTONOMICS_RESET_BAG", bagDisplayName(selectedBagID), nil, selectedBagID)
+		end
+	end)
+	w.resetOneBtn = resetOneBtn
+
+	local resetAllBtn = CreateFrame("Button", nil, w, "UIPanelButtonTemplate")
+	resetAllBtn:SetSize(96, 22)
+	resetAllBtn:SetPoint("LEFT", resetOneBtn, "RIGHT", 8, 0)
+	resetAllBtn:SetText("Reset all")
+	resetAllBtn:SetScript("OnClick", function() StaticPopup_Show("CRAFTONOMICS_RESET_ALL_BAGS") end)
+	w.resetAllBtn = resetAllBtn
+
+	local closeBtn = CreateFrame("Button", nil, w, "UIPanelButtonTemplate")
+	closeBtn:SetSize(80, 22)
+	closeBtn:SetPoint("BOTTOMRIGHT", -16, 14)
+	closeBtn:SetText("Close")
+	closeBtn:SetScript("OnClick", function() w:Hide() end)
+
+	w:SetScript("OnShow", refreshBagWindow)
+	bagWindow = w
+	return w
+end
+
+-- Opens the learned patron & Moxie bag drops window (optionally selecting `bagID`).
+function Options.OpenBagDrops(bagID)
+	if bagID then
+		selectedBagID = bagID
+	elseif not selectedBagID or opensForBag(selectedBagID) == 0 then
+		if opensForBag(DEFAULT_BAG_ID) > 0 then
+			selectedBagID = DEFAULT_BAG_ID
+		else
+			selectedBagID = nil
+			for _, id in ipairs(sortedBagIDs()) do
+				if opensForBag(id) > 0 then
+					selectedBagID = id
+					break
+				end
+			end
+			selectedBagID = selectedBagID or DEFAULT_BAG_ID
+		end
+	end
+	local w = bagWindow or buildBagWindow()
+	w:Show()
+	w:Raise()
+	refreshBagWindow()
 end

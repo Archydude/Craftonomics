@@ -150,7 +150,14 @@ local function retailOutput(recipeID, name, scroll, qualityIDs, rank)
 		return link, itemID
 	end
 	local ok, output = pcall(C_TradeSkillUI.GetRecipeOutputItemData, recipeID, {}, nil, rank and qualityIDs[rank])
-	if ok and output and output.hyperlink and (output.itemID or 0) > 0 then return output.hyperlink, output.itemID end
+	if ok and output and (output.itemID or 0) > 0 then
+		local link = output.hyperlink
+		if not link then
+			if C_Item.RequestLoadItemDataByID then C_Item.RequestLoadItemDataByID(output.itemID) end
+			link = "item:" .. output.itemID
+		end
+		return link, output.itemID
+	end
 end
 
 -- Retail: one recipe as a row, from what the game says about it, or nil when it

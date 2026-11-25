@@ -20,7 +20,7 @@ local GOLD = 10000        -- copper
 local scrollBox       -- the game's recipe list
 local texts = {}      -- recipe row (the game's frame) -> our text on it
 local narrowed = {}   -- rows whose name we made room next to
-local refreshQueued, scanQueued = false, false
+local refreshQueued, scanQueued, pendingMissing = false, false, nil
 local stale = false   -- the window was closed since the prices were asked for
 
 local function enabled()
@@ -68,12 +68,14 @@ local function recipeOf(frame)
 	return highest or info
 end
 
-local function scanSoon()
+local function scanSoon(recipeID)
+	if recipeID and not pendingMissing then pendingMissing = recipeID end
 	if scanQueued then return end
 	scanQueued = true
 	C_Timer.After(SCAN_DELAY, function()
-		scanQueued = false
-		if wanted() then ns.BestCrafts.Ensure() end
+		local missing = pendingMissing
+		scanQueued, pendingMissing = false, nil
+		if wanted() then ns.BestCrafts.Ensure(missing) end
 	end)
 end
 
@@ -110,7 +112,7 @@ local function drawRow(frame)
 	if not (info and wanted()) then return clearRow(frame) end
 	local row = ns.BestCrafts.RowOf(info.recipeID)
 	if not row then
-		scanSoon()
+		scanSoon(info.recipeID)
 		return clearRow(frame)
 	end
 	local shown = profitText(row)
@@ -132,6 +134,9 @@ function RecipeProfit.Render()
 	if stale and wanted() then
 		stale = false
 		ns.BestCrafts.Reprice(true)
+	end
+	if wanted() and ns.BestCrafts.IsStale and ns.BestCrafts.IsStale() then
+		ns.BestCrafts.Ensure()
 	end
 	scrollBox:ForEachFrame(drawRow)
 end

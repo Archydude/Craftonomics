@@ -125,6 +125,7 @@ ns.DEFAULTS = {
 	patronMaterials = "cheapest", -- patron orders' material qualities: "cheapest" | "owned" (see ns.PATRON_MATERIALS_CHOICES)
 	patronReach = "materials",    -- reaching an order's minimum quality: "materials" | "concentration" first
 	nextLosing = true,    -- the Patron tab's Next order button goes on to orders that lose gold
+	countPatronBags = false, -- include learned live-AH value of patron bags and Moxie in order profits
 	bestMaterials = false, -- "Use Craftonomics Reagents" on the order form and crafting page: put them in every order or recipe you open
 	craftStrategy = ns.QUALITY_CRAFTING and "highest" or "buy", -- what the crafting page and Best crafts list craft (see ns.STRATEGIES)
 	scanReminder = true,  -- remind you to scan the auction house when Auctionator's or Craftonomics' prices are old
@@ -160,18 +161,61 @@ ns.DEFAULTS = {
 
 -- Patron order rewards that give profession knowledge: itemID -> points each.
 ns.KNOWLEDGE_ITEMS = {
-	[246330] = 1, -- Flicker
-	[246331] = 2, -- Glimmer
+	[246320] = 1, [246321] = 2, -- Alchemy (Flicker, Glimmer)
+	[246322] = 1, [246323] = 2, -- Blacksmithing
+	[246324] = 1, [246325] = 2, -- Enchanting
+	[246326] = 1, [246327] = 2, -- Engineering
+	[246328] = 1, [246329] = 2, -- Inscription
+	[246330] = 1, [246331] = 2, -- Jewelcrafting
+	[246332] = 1, [246333] = 2, -- Leatherworking
+	[246334] = 1, [246335] = 2, -- Tailoring
 }
+
+-- Openable patron reward bags and 600-Moxie vendor bags whose drops Craftonomics learns as you open them.
+ns.PATRON_BAGS = {
+	[246585] = "Artisan's Consortium Payout",
+	[260534] = "Master Alchemist's Surplus Reagents",
+	[260536] = "Master Smith's Surplus Reagents",
+	[260537] = "Master Enchanter's Surplus Reagents",
+	[260538] = "Master Engineer's Surplus Reagents",
+	[260539] = "Master Herbalist's Surplus Reagents",
+	[260540] = "Master Scribe's Surplus Reagents",
+	[260541] = "Master Jewelcrafter's Surplus Reagents",
+	[260542] = "Master Leatherworker's Surplus Reagents",
+	[260543] = "Master Miner's Surplus Reagents",
+	[260544] = "Master Skinner's Surplus Reagents",
+	[260545] = "Master Tailor's Surplus Reagents",
+}
+-- Each Midnight Artisan's Moxie currency buys its profession's 600-Moxie Surplus Reagents bag.
+ns.MOXIE_BAG_COST = 600
+ns.MOXIE_BAGS = {
+	[3256] = { bagID = 260534, cost = ns.MOXIE_BAG_COST }, -- Alchemy
+	[3257] = { bagID = 260536, cost = ns.MOXIE_BAG_COST }, -- Blacksmithing
+	[3258] = { bagID = 260537, cost = ns.MOXIE_BAG_COST }, -- Enchanting
+	[3259] = { bagID = 260538, cost = ns.MOXIE_BAG_COST }, -- Engineering
+	[3260] = { bagID = 260539, cost = ns.MOXIE_BAG_COST }, -- Herbalism
+	[3261] = { bagID = 260540, cost = ns.MOXIE_BAG_COST }, -- Inscription
+	[3262] = { bagID = 260541, cost = ns.MOXIE_BAG_COST }, -- Jewelcrafting
+	[3263] = { bagID = 260542, cost = ns.MOXIE_BAG_COST }, -- Leatherworking
+	[3264] = { bagID = 260543, cost = ns.MOXIE_BAG_COST }, -- Mining
+	[3265] = { bagID = 260544, cost = ns.MOXIE_BAG_COST }, -- Skinning
+	[3266] = { bagID = 260545, cost = ns.MOXIE_BAG_COST }, -- Tailoring
+}
+ns.COUNT_PATRON_BAGS = "Count estimated value of patron bags and Moxie"
+ns.COUNT_PATRON_BAGS_TIP = "Include the learned live auction house value of Artisan's Consortium Payout bags and " ..
+	"Artisan's Moxie (valued from your opened 600-Moxie Surplus Reagents bags divided by 600) in patron order " ..
+	"profits, sorting, Add profitable, Next order and concentration picks.\n\n" ..
+	"Off (default): patron order profits only count real gold and directly sellable rewards, while hovering a " ..
+	"bag or Moxie still shows its learned drop breakdown."
 
 -- The concentration strategy: which material qualities are picked where
 -- concentration is spent. On the panel, in the options and in the Patron tab's
 -- gear menu. { key, label, tooltip }.
 ns.CONCENTRATION_STRATEGY_TITLE = "Concentration strategy"
-ns.CONCENTRATION_STRATEGY_TIP = "Which material qualities are picked where concentration is spent: on orders that " ..
-	"only reach their minimum quality with concentration, and on the crafting page with concentration on."
+ns.CONCENTRATION_STRATEGY_TIP = "Within the target rank, which material qualities are picked where concentration is spent: on orders that " ..
+	"only reach their minimum quality with concentration, and on the crafting page with Concentrate on (except with Cheapest materials)."
 ns.CONCENTRATION_STRATEGIES = {
-	{ "cheapest", "Cheapest materials (default)", "The cheapest material qualities, whatever concentration they take." },
+	{ "cheapest", "Lowest material cost (default)", "The cheapest material qualities for that rank, whatever concentration they take." },
 	{ "least", "Least concentration", "The material qualities that take the least concentration, and the " ..
 		"cheapest of those. The materials cost more, but your concentration lasts for more crafts." },
 	{ "gold", "Most gold per point", "The material qualities that earn the most gold for each concentration point. " ..
@@ -258,12 +302,12 @@ end
 -- crafts list craft. key, name, short name, and what it does. WoW Forever has no
 -- ranks, so there they say where missing materials come from (see Chains.lua).
 ns.STRATEGIES = ns.QUALITY_CRAFTING and {
-	{ "highest", "Highest rank, cheapest materials", "Highest rank",
-		"The highest rank you can make, with the cheapest materials that reach it." },
+	{ "highest", "Highest rank", "Highest rank",
+		"The highest rank you can make, using the cheapest materials that reach it (or your concentration strategy while concentrating)." },
 	{ "owned", "Use what I own", "What I own",
-		"The highest rank you have every material for. Short for all of them: the highest rank you can make, spending the least gold on what you're missing. The Best crafts list only shows what you can craft now." },
+		"The highest rank you have every material for. Short for all of them: the highest rank you can make, spending the least gold on what you're missing. While concentrating, your concentration strategy only picks among mixes with the same out-of-pocket cost. The Best crafts list only shows what you can craft now." },
 	{ "cheapest", "Cheapest materials", "Cheapest",
-		"The cheapest materials, whatever rank they make. For skill-ups, first crafts and knowledge." },
+		"The cheapest materials overall, whatever rank they make (ignores the concentration strategy). For skill-ups, first crafts and knowledge." },
 } or {
 	{ "buy", "Buy missing", "Buy missing",
 		"Materials you're missing are bought at their auction house price." },
