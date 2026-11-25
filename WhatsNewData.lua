@@ -2,10 +2,13 @@
 ArchdudeWhatsNew:Register("Craftonomics", {
 	title = "Craftonomics",
 	icon = "Interface\\Icons\\INV_Hammer_20",
-	version = "5.16.0",
+	version = "5.17.0",
 	seen = "CraftonomicsWhatsNew",
 	saved = { "CraftonomicsDB", "CraftonomicsCharDB" },
 	changes = {
+		{ "5.17.0",
+			"|cffffd100Craft cost on item tooltips:|r hovering any craftable item now shows |cffffd100Craft Cost|r, what the materials to craft one of it cost, right under the auction house price so you can compare crafting against buying at a glance — even on characters without that profession (such as gatherers). It follows your |cffffd100Crafting strategy|r (|cffffd100Buy missing|r, |cffffd100Craft myself|r or |cffffd100Cheapest way|r on WoW Forever; |cffffd100Highest rank|r, |cffffd100Use what I own|r or |cffffd100Cheapest materials|r on Retail) and your |cffffd100Price addon|r (TSM, Auctionator or Craftonomics' scan). Hold |cffffd100Shift|r over a stack in your bags to see the craft cost for the whole stack. Turn it off with |cffffd100Show craft cost|r on the Tooltips options page.",
+		},
 		{ "5.16.0",
 			"|cffffd100Learned patron bag and Moxie values:|r Craftonomics now learns what drops from |cffffd100Artisan's Consortium Payout|r bags and 600-Moxie |cffffd100Surplus Reagents|r bags as you open them, priced live from the auction house. Hover a bag or Artisan's Moxie reward on the Patron tab or order panel to see its drop rates, average quantities, and estimated value; right-click one (or type |cffffd100/craftonomics bags|r) to view or reset your learned history. Turn on |cffffd100Count estimated value of patron bags and Moxie|r in Patron orders options or the Patron tab's gear menu to include those estimates in order profits, sorting, and shopping buttons (off by default, so profits keep counting real gold alone). Patron orders now also recognize knowledge rewards across all eight Midnight crafting professions.",
 			"|cffffd100Crafting and concentration strategy hierarchy:|r your |cffffd100Crafting strategy|r now always takes priority over your |cffffd100Concentration strategy|r (with |cffffd100Cheapest materials|r ignoring concentration choices and |cffffd100Use what I own|r only picking among mixes with the same out-of-pocket cost). When using concentration on the crafting page, profitable mixes are now preferred over losing zero-concentration mixes, and switching strategy or toggling |cffffd100Concentrate|r updates the form right away.",
@@ -48,12 +51,6 @@ ArchdudeWhatsNew:Register("Craftonomics", {
 			"|cffffd100Materials in your bank (WoW Forever):|r crafting there only takes what's in your bags, so the panel's material rows now count your bags, like the game's own window. A material your bags are short of shows what your bank holds after its count, with a bank mark: in orange when bags and bank together are enough, and a line under the materials says to take them out of the bank. Hover a row for how many are in each. The shopping list still counts your bank, so nothing in it is bought again.",
 			"|cffffd100A looked-up price counts everywhere:|r picking an item on the Sell tab asks the auction house what it's listed for right now. When your prices come from Craftonomics' own scan or from |cffffd100Freshest prices|r, that lowest price is now the item's price everywhere: the Sell list's Price column, the panel, Best crafts and tooltips. The same goes for items My auctions checks, and stackable items the game's own window lists.",
 			"|cffffd100Scan is in progress:|r while Craftonomics' price scan runs, the auction house takes no new auctions or cancels. The Sell and My auctions tabs now say so, with a |cffffd100Stop scan|r button beside the notice that ends the scan and keeps the prices it read.",
-		},
-		{ "5.10.0",
-			"|cffffd100Return:|r on the panel, under a craft's profit or loss: the profit as a share of what the materials cost, like |cffffd100+25%|r in green (every 100 gold of materials makes 25 gold) or |cffffd100-5%|r in red. A low return leaves little room: a small change in prices turns the craft into a loss. Not on crafting orders.",
-			"|cffffd100Return column in Best crafts:|r the same number for every recipe. Click its header to sort by it; it's in each row's tooltip too. It shows by default on WoW Forever; on Retail, right-click a header to pick it.",
-			"|cffffd100Best craft's return:|r on a material's tooltip, hold |cffffd100Shift|r to see the best craft's return under the Best Craft lines. |cffffd100Best craft's return|r on the Tooltips options page shows it always, or never.",
-			"|cffffd100Weigh best craft by return:|r a new option on the Tooltips options page, off by default. With it on, when the best craft is picked, a recipe's profit counts for more the higher its return and for less the lower: as it is at a return of 25%, double at 50%, half at 12.5%, and never more than four times. So a craft that risks little gold for its profit can beat one that makes more from costly materials. The line still shows the craft's real profit. With |cffffd100Weigh best craft by sale rate|r on as well, both count.",
 		},
 	},
 })

@@ -1,9 +1,9 @@
 -- Craftonomics: item tooltips show what a vendor charges and pays for the item,
 -- what it sells for with the price you picked (TSM's price type, or Auctionator),
--- TSM's sale rate and trend, its lowest auction against its market value (with a
--- Cheap or Expensive hint), and the auction house deposit for posting it, so you can tell
--- whether it's worth putting up. A material also shows the best craft you can
--- make with it. Each line has its own option.
+-- what it costs to craft, TSM's sale rate and trend, its lowest auction against its
+-- market value (with a Cheap or Expensive hint), and the auction house deposit for
+-- posting it, so you can tell whether it's worth putting up. A material also shows
+-- the best craft you can make with it. Each line has its own option.
 local _, ns = ...
 
 local format = string.format
@@ -173,8 +173,8 @@ local RECIPE_CLASS = Enum.ItemClass and Enum.ItemClass.Recipe or 9
 local function onItem(tooltip, data)
 	local db = ns.db
 	if not db or not C_AuctionHouse then return end
-	if not (db.tipVendorBuy or db.tipVendorSell or db.tipAuction or db.tipDeposit or db.tipSaleRate or db.tipTrend
-		or db.tipLowest or db.tipBestCraft or db.tipRecipe) then
+	if not (db.tipVendorBuy or db.tipVendorSell or db.tipAuction or db.tipCraftCost or db.tipDeposit or db.tipSaleRate
+		or db.tipTrend or db.tipLowest or db.tipBestCraft or db.tipRecipe) then
 		return
 	end
 	local itemID = data and data.id
@@ -209,6 +209,7 @@ local function onItem(tooltip, data)
 	local price, from
 	if postable and db.tipAuction then price, from = ns.Prices.SaleFrom(link or ("item:" .. itemID), itemID) end
 	if from == "saved" then price = nil end
+	local craftCost = db.tipCraftCost and ns.AllRecipes and ns.AllRecipes.CraftCost and ns.AllRecipes.CraftCost(itemID) or nil
 	local list = postable and db.tipDeposit and deposits(itemID, location, qty) or nil
 	-- The share of its auctions that sell, from TSM (nil without TSM).
 	local rate = postable and db.tipSaleRate and ns.Prices.SaleRate(link or ("item:" .. itemID)) or nil
@@ -232,7 +233,7 @@ local function onItem(tooltip, data)
 	if db.tipRecipe and select(6, C_Item.GetItemInfoInstant(itemID)) == RECIPE_CLASS then
 		recipe = ns.AllRecipes.Scroll(itemID)
 	end
-	if not (vendorBuy or vendorSell or price or list or rate or trend or lowest or best or recipe) then return end
+	if not (vendorBuy or vendorSell or price or craftCost or list or rate or trend or lowest or best or recipe) then return end
 
 	tooltip:AddLine(" ")
 	if vendorBuy then tooltip:AddDoubleLine("Vendor Buy", money(vendorBuy), 1, 0.82, 0, 1, 1, 1) end
@@ -243,6 +244,10 @@ local function onItem(tooltip, data)
 	if price then
 		tooltip:AddDoubleLine(sourceName(from), money(price), 1, 0.82, 0, 1, 1, 1)
 		if qty > 1 then tooltip:AddDoubleLine("  For" .. stack, money(price * qty), 0.53, 0.53, 0.53, 1, 1, 1) end
+	end
+	if craftCost then
+		tooltip:AddDoubleLine("Craft Cost", money(craftCost), 1, 0.82, 0, 1, 1, 1)
+		if qty > 1 then tooltip:AddDoubleLine("  For" .. stack, money(craftCost * qty), 0.53, 0.53, 0.53, 1, 1, 1) end
 	end
 	if rate then tooltip:AddDoubleLine("TSM Sale Rate", ns.Format.SaleRate(rate), 1, 0.82, 0, 1, 1, 1) end
 	if trend then tooltip:AddDoubleLine("TSM Trend", ns.Format.Trend(trend), 1, 0.82, 0, 1, 1, 1) end

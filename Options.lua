@@ -524,6 +524,12 @@ function Options.Create()
 		"On item tooltips: what the item sells for on the auction house, with the price you picked (the TSM " ..
 		"price for crafted items on the main page, or Auctionator's). For a stack in your bags, hold Shift to " ..
 		"also see what the whole stack sells for.\n\nNot on items you can't post, like soulbound ones.")
+	checkbox("tipCraftCost", "Show craft cost",
+		"On item tooltips: Craft Cost, what the materials to craft one of the item cost, even on characters " ..
+		"that don't have the profession. Follows your crafting strategy (" ..
+		(quality and "Highest rank, Use what I own or Cheapest materials" or "Buy missing, Craft myself or Cheapest way") ..
+		") and your Price addon. For a stack in your bags, hold Shift to also see the cost for the whole stack.\n\n" ..
+		"Not shown when one of the item's materials has no price.")
 	checkbox("tipDeposit", "Show AH deposit",
 		"On item tooltips: the auction house deposit for posting the item for " ..
 		(quality and "12, 24 or 48" or "2, 8 or 24") .. " hours, for one, or for the whole " ..

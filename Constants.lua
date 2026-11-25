@@ -138,6 +138,7 @@ ns.DEFAULTS = {
 	tipVendorBuy = true,
 	tipVendorSell = true,
 	tipAuction = true,
+	tipCraftCost = true,
 	tipDeposit = true,
 	tipSaleRate = true,   -- item tooltips: TSM's sale rate
 	tipTrend = true,      -- item tooltips: TSM's trend (market value against historical price)

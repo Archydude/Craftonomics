@@ -57,7 +57,7 @@ With TSM, switch **All recipes** to a **heatmap**: tiles colored by trend, sized
 Best crafts shows what a **skill point** costs. Materials in your **bank** are marked on the panel. **Craft myself** prices materials at what crafting them costs, and **Cheapest way** crafts or buys each, whichever is cheaper.
 
 ### Item tooltips
-Vendor and auction prices, the **AH deposit**, and with TSM the **sale rate**, **trend** and whether the lowest auction is **cheap** or **expensive**. Materials show the **best craft** they lead to, recipes the **profit** of the craft they teach.
+Vendor, auction and **craft cost** prices (even without the profession), the **AH deposit**, and with TSM the **sale rate**, **trend** and whether the lowest auction is **cheap** or **expensive**. Materials show the **best craft** they lead to, recipes the **profit** of the craft they teach.
 
 ### Good to know
 **TSM prices for alts** that keep TSM turned off. **Hoard Value** can value your items with Craftonomics' prices. Type **/craftonomics** for options.
@@ -74,18 +74,21 @@ This addon was made with AI.
 ## B. Upload File form
 
 **Files:** two, each uploaded with only its own game versions (why is in [UPLOADING.md](../UPLOADING.md)). The display name, release type and changelog are the same for both.
-- `dist\Craftonomics-5.16.0-retail.zip`: Retail `12.1.5`
-- `dist\Craftonomics-5.16.0-forever.zip`: WoW Forever `1.60.1`
+- `dist\Craftonomics-5.17.0-retail.zip`: Retail `12.1.5`
+- `dist\Craftonomics-5.17.0-forever.zip`: WoW Forever `1.60.1`
 
 **Display name**
 ```
-Craftonomics 5.16.0
+Craftonomics 5.17.0
 ```
 
 **Release type:** `Release`
 
 **Changelog** (paste only the newest part; paste older parts too if they never went up)
 ```markdown
+5.17.0
+- **Craft cost on item tooltips:** hovering any craftable item now shows **Craft Cost**, what the materials to craft one of it cost, right under the auction house price so you can compare crafting against buying at a glance — even on characters without that profession (such as gatherers). It follows your **Crafting strategy** (**Buy missing**, **Craft myself** or **Cheapest way** on WoW Forever; **Highest rank**, **Use what I own** or **Cheapest materials** on Retail) and your **Price addon** (TSM, Auctionator or Craftonomics' scan). Hold **Shift** over a stack in your bags to see the craft cost for the whole stack. Turn it off with **Show craft cost** on the Tooltips options page.
+
 5.16.0
 - **Learned patron bag and Moxie values:** Craftonomics now learns what drops from **Artisan's Consortium Payout** bags and 600-Moxie **Surplus Reagents** bags as you open them, priced live from the auction house. Hover a bag or Artisan's Moxie reward on the Patron tab or order panel to see its drop rates, average quantities, and estimated value; right-click one (or type `/craftonomics bags`) to view or reset your learned history. Turn on **Count estimated value of patron bags and Moxie** in Patron orders options or the Patron tab's gear menu to include those estimates in order profits, sorting, and shopping buttons (off by default, so profits keep counting real gold alone). Patron orders now also recognize knowledge rewards across all eight Midnight crafting professions.
 - **Crafting and concentration strategy hierarchy:** your **Crafting strategy** now always takes priority over your **Concentration strategy** (with **Cheapest materials** ignoring concentration choices and **Use what I own** only picking among mixes with the same out-of-pocket cost). When using concentration on the crafting page, profitable mixes are now preferred over losing zero-concentration mixes, and switching strategy or toggling **Concentrate** updates the form right away.
