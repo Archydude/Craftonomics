@@ -318,16 +318,18 @@ function Model.BasicCost(materials)
 end
 
 -- The lowest auction house listing price for one item that doesn't lose gold
--- (after the 5% AH cut when `ahCut` is on). Returns the plain break-even price,
--- and a second value counting average multicraft and resourcefulness when `procs`
--- adds any bonus. Nil when `cost` or `made` isn't positive.
-function Model.BreakEven(cost, made, ahCut, procs)
+-- (after the 5% AH cut when `ahCut` is on, and `expectedDeposit` per craft when
+-- subtracted). Returns the plain break-even price, and a second value counting
+-- average multicraft and resourcefulness when `procs` adds any bonus. Nil when
+-- `cost` or `made` isn't positive.
+function Model.BreakEven(cost, made, ahCut, procs, expectedDeposit)
 	if not (cost and cost > 0 and made and made > 0) then return end
 	local keep = ahCut and (1 - ns.AH_CUT) or 1
-	local plain = cost / (made * keep)
+	local dep = (expectedDeposit and expectedDeposit > 0) and expectedDeposit or 0
+	local plain = (cost + dep) / (made * keep)
 	if not (procs and procs.total and procs.total > 0) then return plain end
 	local extra = (procs.chances and procs.chances.multicraft or 0) * (procs.extraPerItem or 0)
-	local effectiveCost = math.max(cost - (procs.resourcefulness or 0), 0)
+	local effectiveCost = math.max(cost - (procs.resourcefulness or 0), 0) + dep * (1 + extra)
 	local withProcs = effectiveCost / (made * (1 + extra) * keep)
 	return plain, withProcs
 end
@@ -495,8 +497,16 @@ local function concentrationOf(ctx, info, quality, model, sold)
 	local link, itemID = ns.Blizzard.OutputAtQuality(ctx.recipeInfo, ctx.transaction, found.quality)
 	local price = link and output and output.sale and cappedSale(ctx, link, itemID, found.quality)
 	if price then
-		local keep = ns.db.ahCut and (1 - ns.AH_CUT) or 1
-		local gain = (price * ((sold.quantityMin or 1) + (sold.quantityMax or 1)) / 2 - output.sale) * keep
+		local made = ((sold.quantityMin or 1) + (sold.quantityMax or 1)) / 2
+		local nextNet = ns.Prices.NetProceeds and ns.Prices.NetProceeds(link, itemID, price, made)
+		local currentNet = output.net or (output.sale - (output.ahCut or 0) - (output.expectedDeposit or 0))
+		local gain
+		if nextNet then
+			gain = nextNet - currentNet
+		else
+			local keep = ns.db.ahCut and (1 - ns.AH_CUT) or 1
+			gain = price * made * keep - currentNet
+		end
 		if gain > 0 then found.gain = gain end
 	end
 	return found
@@ -564,11 +574,25 @@ function Model.Craft(ctx)
 		}
 		model.output = output
 		if price then
-			output.sale = price * (qtyMin + qtyMax) / 2
-			model.total = output.sale
-			if ns.db.ahCut then
-				output.ahCut = output.sale * ns.AH_CUT
-				model.total = output.sale - output.ahCut
+			local made = (qtyMin + qtyMax) / 2
+			if ns.Prices.NetProceeds then
+				local net, info = ns.Prices.NetProceeds(link, itemID, price, made)
+				output.sale = info.gross
+				output.ahCut = info.ahCut > 0 and info.ahCut or nil
+				output.expectedDeposit = info.expectedDeposit > 0 and info.expectedDeposit or nil
+				output.soldToVendor = info.soldToVendor or false
+				output.vendorProceeds = info.vendorProceeds
+				output.saleInfo = info
+				output.net = net
+				model.total = net
+			else
+				output.sale = price * made
+				model.total = output.sale
+				if ns.db.ahCut then
+					output.ahCut = output.sale * ns.AH_CUT
+					model.total = output.sale - output.ahCut
+				end
+				output.net = model.total
 			end
 			if qtyMin ~= qtyMax then notes[#notes + 1] = "Average amount used for the sale price." end
 		else
@@ -602,7 +626,7 @@ function Model.Craft(ctx)
 		local chances = ns.Procs.Chances(info)
 		if not planning then model.concentration = concentrationOf(ctx, info, quality, model, sold) end
 		local output = model.output
-		local sale = output and output.sale and output.sale - (output.ahCut or 0)
+		local sale = output and (output.net or (output.sale and output.sale - (output.ahCut or 0) - (output.expectedDeposit or 0)))
 		model.procs = ns.Procs.Expected(ns.Procs.ProfessionOf(recipeInfo.recipeID), chances, sale,
 			Model.BasicCost(model.materials))
 		model.expected = model.total + model.procs.total

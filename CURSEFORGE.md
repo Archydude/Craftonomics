@@ -34,19 +34,19 @@ Profit or loss on every craft, which recipes are worth making, and its own aucti
 Craftonomics answers in gold: **profit or loss?** A panel next to your profession window prices every craft and crafting order on **Retail** and **WoW Forever**.
 
 - **Expected profit** with procs, **return** on materials, and **break-even price**
-- **Best crafts**: movable, resizable window (`12pt`–`20pt` text) ranking every recipe across your characters
+- **Best crafts**: movable, resizable standalone window (`12pt`–`20pt` text) with a **Profession** switcher and **All recipes** button, ranking every recipe across your characters
 - **Profit on every recipe** in Blizzard's recipe list
-- **All recipes**: every profession's recipes as a list or **trend heatmap**
+- **All recipes**: every profession's recipes as a customizable-column list or **trend heatmap**
 - **Ledger**: crafted profit, posted auctions, and where crafts went
 - **Auction house window**: shopping list, selling, and undercut cancelling
 - **Works alone or with addons**: own 60-day price scan & 60-day mailbox sale rate, **TradeSkillMaster**, **Auctionator**, or **freshest** prices
 - **Patron orders**: order profits, knowledge & learned bag/Moxie values, and missing materials crafted straight from Blizzard's tab
 
 ### Crafts, orders, and Best crafts
-Sale price minus the 5% cut and materials, plus **break-even**, **concentration strategy**, **disenchant value**, high/expected **AH deposit** indicators, and **Craft**/**Max** buttons. **Best crafts** tracks **Return**, **Can craft now**, **Sale rate**, and **Trend** from TSM or in-game scans/mail.
+Sale price minus the 5% cut, optional **expected AH deposit** fee, and materials — with a **vendor sell price floor** when vendoring pays more — plus **break-even**, **concentration strategy**, **disenchant value**, and **Craft**/**Max** buttons. **Best crafts** opens without the profession window (click a row to jump to that recipe) and tracks **Return**, **Can craft now**, **Sale rate**, and **Trend** from TSM or in-game scans/mail.
 
 ### All recipes & Auction house
-**All recipes** includes a **trend heatmap** sized by daily gold sold (TSM) or listed value (Auctionator / own scan). **Shopping list** adds missing reagents; **Sell** shows prices and sale rates; **My auctions** cancels undercuts.
+**All recipes** lets you pick up to 6 optional columns (**Sale Each**, **Return**, **Gold/day**, **Exp. Deposit**, **Trend**, **Listed**, and more) and includes a **trend heatmap** sized by daily gold sold (TSM) or listed value (Auctionator / own scan). **Shopping list** adds missing reagents; **Sell** shows prices and sale rates; **My auctions** cancels undercuts.
 
 ### WoW Forever
 Best crafts tracks **skill-up** cost; materials in your **bank** show on the panel; **Craft myself** and **Cheapest way** price intermediate crafts.
@@ -59,7 +59,7 @@ Vendor, auction, **market value**, **craft cost** (even without the profession),
 
 This addon was made with AI.
 
-**Feedback and bug reports are welcome** in the comments.
+**Feedback, suggestions, and bug reports are welcome** in the comments or by sending me a message on Discord.
 ```
 ---
 
@@ -69,18 +69,24 @@ This addon was made with AI.
 ## B. Upload File form
 
 **Files:** two, each uploaded with only its own game versions (why is in [UPLOADING.md](../UPLOADING.md)). The display name, release type and changelog are the same for both.
-- `dist\Craftonomics-5.18.0-retail.zip`: Retail `12.1.5`
-- `dist\Craftonomics-5.18.0-forever.zip`: WoW Forever `1.60.1`
+- `dist\Craftonomics-5.19.0-retail.zip`: Retail `12.1.5`
+- `dist\Craftonomics-5.19.0-forever.zip`: WoW Forever `1.60.1`
 
 **Display name**
 ```
-Craftonomics 5.18.0
+Craftonomics 5.19.0
 ```
 
 **Release type:** `Release`
 
 **Changelog** (paste only the newest part; paste older parts too if they never went up)
 ```markdown
+5.19.0
+- **Vendor price floor for sale proceeds:** when an item's vendor sell value pays more than its net auction house proceeds (after enabled fees), Craftonomics now uses the vendor sell price with no auction house fees instead. Items with no auction house price continue to show as unpriced rather than falling back to vendor price. On by default; toggle with **Use vendor price as minimum sale price** on the Prices options page.
+- **Subtract expected AH deposit as a fee (optional):** turn on **Subtract expected AH deposit** on the Prices options page (off by default) to deduct expected lost auction house deposits across relistings right alongside the 5% auction house cut across the panel, break-even price, Best crafts, All recipes, Recipe Profit tooltips, and Craft vs AH tooltips. Pick which duration to estimate with **Expected deposit duration** (**Sell tab's duration**, or `12h` / `24h` / `48h` on Retail and `2h` / `8h` / `24h` on WoW Forever).
+- **Standalone Best crafts opening, Profession dropdown, and All recipes button:** opening Best crafts from the minimap button, minimap menu, or `/craftonomics best` now opens the Best crafts window by itself without opening Blizzard's profession window — clicking a recipe row opens the profession window straight to that recipe. Switch between your character's professions with the new **Profession** dropdown, or jump straight to **All recipes** with the new button in the bottom bar.
+- **All recipes Columns picker (up to 6 optional columns):** click **Columns** next to Filters (or right-click any column header) to choose up to 6 optional columns alongside **Item** and **Net Profit** — including **Sale Each**, **Return**, **Gold/day**, **Exp. Deposit**, **Trend**, and **Listed** — with a live `N/6` counter that greys out unselected columns at `6/6`, plus **Default columns** to reset.
+
 5.18.0
 - **Standalone, resizable Best crafts window and text size:** Best crafts now opens in its own movable, resizable window alongside your crafting window so you can browse recipes side by side. Drag its bottom-right corner to resize it, pick your **Text size** (`12pt`–`20pt`) inside the window or in Panel options so item names aren't clipped, and use **Reset** in Panel options to restore the default size and position.
 - **Market Value, Trend, Lowest vs Market and Heatmap without TSM:** Craftonomics' scan now keeps 60 days of daily prices and reads **Auctionator** scan history too, bringing 14-day **Market Value** (with extreme outliers filtered out), **Trend**, **Lowest vs Market**, and a listed-value **Heatmap** even when you don't use TSM.

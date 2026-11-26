@@ -61,6 +61,8 @@ local function loadSettings()
 	db.bestHidden = db.bestHidden or {} -- kinds of item the Best crafts list hides: group key -> true
 	-- Best crafts columns you turned on or off (key -> true/false); the rest show as they do by default.
 	db.bestColumns = db.bestColumns or {}
+	-- All recipes columns you turned on or off (key -> true/false); the rest show as they do by default.
+	db.recipesColumns = db.recipesColumns or {}
 	-- The columns the Best crafts list sorts by after bestSort, in order: { key, ascending } each.
 	db.bestSortMore = db.bestSortMore or {}
 	db.bestIgnored = db.bestIgnored or {} -- recipes the Best crafts list hides: recipeID -> true
@@ -203,9 +205,7 @@ SlashCmdList.CRAFTONOMICS = function(msg)
 		return
 	end
 	if command == "best" then
-		if not ns.BestCraftsList.Show() then
-			ns.Shopping.Say("Open your profession window on its recipes first.")
-		end
+		ns.BestCraftsList.Toggle()
 		return
 	end
 	if command == "testrank" then

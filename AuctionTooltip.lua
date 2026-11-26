@@ -227,8 +227,11 @@ local function onItem(tooltip, data)
 	local showCraftCost = db.tipCraftCost and craftCost or nil
 	local craftVsAH
 	if postable and db.tipCraftVsAH and craftCost and craftCost > 0 and ahPrice and ahPrice > 0 then
-		local netAH = db.ahCut and (ahPrice * (1 - ns.AH_CUT)) or ahPrice
-		craftVsAH = math.floor((netAH - craftCost) * 100 / craftCost + 0.5)
+		local netAH = ns.Prices.NetProceeds and ns.Prices.NetProceeds(itemKey, itemID, ahPrice, 1)
+			or (db.ahCut and (ahPrice * (1 - ns.AH_CUT)) or ahPrice)
+		if netAH then
+			craftVsAH = math.floor((netAH - craftCost) * 100 / craftCost + 0.5)
+		end
 	end
 	local rawDeps = postable and (db.tipDeposit or db.tipExpectedDeposit) and rawDeposits(itemID, location, qty) or nil
 	local list = db.tipDeposit and rawDeps and formatDeposits(rawDeps) or nil

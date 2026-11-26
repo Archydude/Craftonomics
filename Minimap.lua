@@ -20,9 +20,6 @@ local RECIPES_ICON = "Interface\\Icons\\INV_Scroll_06"
 -- Degrees around the minimap where the button starts, away from where the other
 -- addons in this folder start theirs (160, 200, 220).
 local START_POSITION = 250
--- How long to wait for the profession window to be ready for the Best crafts
--- list after opening it: tries, and seconds between them.
-local OPEN_TRIES, OPEN_RETRY = 20, 0.1
 
 local LDBIcon = LibStub("LibDBIcon-1.0")
 local registered = false
@@ -56,41 +53,30 @@ local function lastProfession()
 	return list[1]
 end
 
--- Opens a profession's window on the Best crafts list. The window takes a moment
--- to be ready, so the list is tried a few times.
+-- Opens the standalone Best crafts window for `skillLine` without opening the
+-- profession window.
 local function openBestCrafts(skillLine)
-	if not (ns.Blizzard.IsLoaded() and ProfessionsFrame:IsShown()) or ns.Blizzard.ShownBaseProfession() ~= skillLine then
-		if not C_TradeSkillUI.OpenTradeSkill(skillLine) then
-			ns.Shopping.Say("Couldn't open that profession right now.")
-			return
-		end
-	end
-	local tries = 0
-	local function try()
-		tries = tries + 1
-		if not ns.Blizzard.ShowsRecipeList() and ns.Blizzard.IsOwnProfession() then ns.Blizzard.ShowRecipesTab() end
-		if ns.BestCraftsList.Show() or tries >= OPEN_TRIES then return end
-		C_Timer.After(OPEN_RETRY, try)
-	end
-	C_Timer.After(0, try)
+	ns.BestCraftsList.Show(skillLine)
 end
 
 ---------------------------------------------------------------------------
 -- Clicks, menu and tooltip
 ---------------------------------------------------------------------------
 
--- Left-click: the Best crafts list of your last profession, or closes it when it's open.
+-- Left-click: toggles the standalone Best crafts window for your last profession.
 local function toggleBestCrafts()
 	if ns.BestCraftsList.IsShown() then
 		ns.BestCraftsList.Hide()
 		return
 	end
 	local profession = lastProfession()
-	if not profession then
+	if profession then
+		openBestCrafts(profession.skillLine)
+	elseif ns.Scans and ns.Scans.Entries and #ns.Scans.Entries() > 0 then
+		ns.BestCraftsList.Show()
+	else
 		ns.Options.Open()
-		return
 	end
-	openBestCrafts(profession.skillLine)
 end
 
 -- A menu line's text with an icon before it.

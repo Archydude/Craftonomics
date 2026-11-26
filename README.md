@@ -29,7 +29,7 @@ It was called **Craft Profit** up to version 4.8. On Retail your settings and hi
 
 - **TSM prices for alts:** keep TSM turned off on your crafting alts and they still get TSM prices, saved by a character with TSM each time it logs in.
 
-- **Minimap button:** opens your profession window on the Best crafts list; hover for this session's total.
+- **Minimap button:** opens the standalone Best crafts window (without opening your profession window); hover for this session's total.
 
 - **Best rank on tooltips:** an item you can craft shows the highest rank you can make it at with top-quality materials, anywhere you see its tooltip.
 
@@ -174,7 +174,7 @@ Under the list: how much concentration the orders use, this session's total (cli
 Turn off **Show on the Patron tab** in the options to get Blizzard's own columns back.
 
 ### Best crafts
-Click the **Best crafts** tab, next to the profession window's own tabs (from any of them, it goes back to your recipes first), click the minimap button, or type `/craftonomics best`. It opens in its own movable, resizable window (with a resize corner at the bottom right and a **Text size** selector from 12pt to 20pt at the top right) alongside your crafting window, listing every recipe you know in the profession shown (Midnight Blacksmithing, say), most profitable first. It works out each recipe for a few seconds after it opens, and shows how far it's got at the bottom.
+Click the **Best crafts** tab next to the profession window's own tabs, click the minimap button, or type `/craftonomics best`. It opens by itself in its own movable, resizable window (without opening the profession window, with a **Profession** dropdown to switch between your professions, a **Text size** selector from 12pt to 20pt at the top right, and a resize corner at the bottom right), listing every recipe you know in that profession (using saved scan data at today's prices when the profession window is closed), most profitable first. While your profession window is open, a newly opened profession works out each recipe for a few seconds and shows how far it's got at the bottom.
 
 - **Expected** (or **Profit**): what one craft makes after the 5% auction house cut, at the rank your crafting strategy picks (without concentration), with the materials it picks: the same ones the crafting page would use. With **Count procs in profits** on (the default), it's what a craft makes on average with procs, and the list ranks by it; off, the column is **Profit**, without them. Its quality icon is after the name. Recipes whose item has no auction price at the rank you'd make say **No price**, in grey, at the bottom.
 - **Gold/day:** roughly what the recipe could make in a day: the profit on each item times how many sell per day. So a recipe with a big profit that hardly sells stops looking better than one that sells all day. It's for comparing recipes, not a promise: with TSM it counts sales across your whole region, and you'd only get a share of them; without TSM, your own sales from the last 14 days. Recipes that lose gold or haven't sold show **-**. The list still opens sorted by profit; click the header to sort by it.
@@ -190,7 +190,7 @@ Click the **Best crafts** tab, next to the profession window's own tabs (from an
 
 **Hover a row** for the sale price, each material and its price, the profit, and what concentration would add (e.g. **+95g for 38 concentration, 2g 50s per point**). For items with ranks, each rank's price and how many of it are listed, so a rank nobody buys stands out.
 
-**Click a row** to open its recipe in the profession window while keeping Best crafts open beside it. With **Use Craftonomics Reagents** on, its materials go straight in. Click **Best crafts** again (or press Escape / X) to close the window.
+**Click a row** to open the profession window directly to that recipe while keeping Best crafts open beside it. With **Use Craftonomics Reagents** on, its materials go straight in. Click **Best crafts** again (or press Escape / X) to close the window.
 
 The window stays open when you switch to another profession and automatically updates with that profession's recipes once they show. Drag it by its title area or resize it from the bottom-right corner; its position and size are remembered (reset them from Panel options).
 
@@ -214,7 +214,7 @@ Click a column header to sort by it; click again to reverse. Recipes without a v
 - It starts on the profession shown, for this character. **All characters** (below) shows the rest.
 - It works out the list again when you gain skill, spend specialization points or change profession gear while it's open.
 
-**All characters:** the button at the bottom of the list puts every profession of all your characters in one list, so you can see which character to log in to for the most gold. Shopping from a row puts its materials on that character and profession's shopping list. Click the button again to go back to the profession shown.
+**All characters:** the button at the bottom of the list puts every profession of all your characters in one list, so you can see which character to log in to for the most gold. Left of it, **All recipes** opens the All recipes window. Shopping from a row puts its materials on that character and profession's shopping list. Click the button again to go back to the profession shown.
 
 - A **Crafter** column shows who makes each recipe, in class color. Click its header to sort by it, or type a character's name in the search box.
 - A recipe two characters know shows once for each, at the rank that character can reach.
@@ -277,11 +277,11 @@ Craftonomics works on WoW Forever: the panel, Best crafts, the shopping list and
 - Amounts show the two biggest coins, like **1s 4c** or **4g 12s**.
 
 ## All recipes
-A window with every profession's recipes that make something you can trade, whether or not one of your characters knows them, so you can see what's worth making and what's selling. Open it from the minimap button's right-click menu or with `/craftonomics recipes`. It prices every recipe when it opens, which takes a moment.
+A window with every profession's recipes that make something you can trade, whether or not one of your characters knows them, so you can see what's worth making and what's selling. Open it from the **All recipes** button in the Best crafts window, from the minimap button's right-click menu, or with `/craftonomics recipes`. It prices every recipe when it opens, which takes a moment.
 
 Every recipe is priced as if you bought all its materials (at a vendor when one sells them, otherwise on the auction house) and sold what one craft makes, at today's prices. A recipe that makes a varying number of items counts the average.
 
-- **Columns:** the item, its profession, **Skill** (WoW Forever), **Materials** (what they cost, in red), **Gross Profit** (what one craft's items sell for after the auction house cut), **Net Profit** (Gross Profit minus Materials), **TSM Sale Rate** (or **Your Sale Rate** without TSM once you have auction mail history), and with TSM, **Sold per Day**. Hover a row for its materials and what each costs.
+- **Columns:** the item, its profession, **Skill** (WoW Forever), **Materials** (what they cost, in red), **Gross Profit** (what one craft's items sell for after enabled fees, or vendor sell price if higher), **Net Profit** (Gross Profit minus Materials), **TSM Sale Rate** (or **Your Sale Rate** without TSM once you have auction mail history), and with TSM on Retail, **Sold per Day**. Click **Columns** next to Filters (or right-click any column header) to select up to 6 optional columns alongside **Item** and **Net Profit** — including **Sale Each**, **Return**, **Gold/day**, **Exp. Deposit**, **Trend**, and **Listed** — or reset to **Default columns**. Hover a row for its materials and what each costs.
 - **Expansion** (Retail): the dropdown shows one expansion's recipes at a time, starting on the newest. Picking another prices its recipes, which takes a moment.
 - **Rank** (Retail): nobody's skill is there to say which rank a craft would come out at, so you pick. **Highest rank, best materials** (default) prices each recipe at its highest rank with the best quality of every material; a skilled crafter often reaches that rank with cheaper materials. **Lowest rank, cheapest materials** prices it at its lowest rank. The rank shows after the item's name. Multicraft, resourcefulness and concentration aren't counted, and an enchant is priced as the scroll it makes, with its vellum.
 - **Skill** (WoW Forever): the skill the recipe needs, in orange. The game only says that for recipes learned from a recipe item (a pattern, plans, a schematic). For a recipe a trainer teaches, it's the skill where the recipe turns yellow, in yellow: you can learn it by then, often a little sooner.
@@ -354,7 +354,7 @@ Where your prices come from, when the auction house was last scanned and how man
 At the auction house, `/craftonomics sell`, `/craftonomics auctions` and `/craftonomics prices` open the window on that tab, and `/craftonomics scan` starts a scan.
 
 ## Minimap button
-- **Click:** opens the profession window of the profession you opened last, on its Best crafts list. Click again to close the list.
+- **Click:** opens (or closes) the standalone Best crafts window for the profession you opened last, without opening the profession window.
 - **Right-click:** a menu to open any of your professions' Best crafts, Craftonomics' shopping list (when you use it), the Ledger, All recipes, switch the crafting strategy, or open the options.
 - **Hover:** this session's total and your luck.
 - Drag it around the minimap. It's also in the minimap's addon menu, and works with minimap button collectors.
@@ -417,6 +417,9 @@ Click the gear on the panel (or Craftonomics options in the gear menu under the 
 | Remind me of old prices | On by default. With prices from Auctionator or Craftonomics' own scan: a chat reminder at the auction house after a day, and a notice over the Best crafts list after 3 days. With TSM prices saved for alts: the same, to log in on a character with TSM. |
 | Buy vendor items on the auction house | Off by default: materials a vendor sells (thread, flux, vials...) are priced at the vendor, and the shopping list says in chat to buy them there. On: they're priced at their auction house price and go on the shopping list; when the auction house asks more than a vendor, the tooltips of what's missing (the Shopping list button, a material's cart, a Best crafts row) show both prices, and chat says so when the shopping list gets it. Also a checkbox on the panel, under the crafting strategy. |
 | Subtract auction house cut (5%) | On by default. |
+| Use vendor price as minimum sale price | On by default. When an item's auction house proceeds after fees are less than what a vendor pays for it, uses the vendor sell price instead with no auction house fees. Items with no auction house price still show as unpriced. |
+| Subtract expected AH deposit | Off by default. Subtracts expected lost auction house deposits across relistings from sale proceeds and profits, based on TSM's sale rate or your own personal sale rate (once you have at least 3 finished auctions). Skipped when no sale rate is available or when vendoring pays more. |
+| Expected deposit duration | Which auction duration estimates expected deposits for fees and Market details: Sell tab's duration (default) or a fixed duration (12h / 24h / 48h on Retail, 2h / 8h / 24h on WoW Forever). |
 | Save TSM prices for alts | Off by default. Characters with TSM keep its prices for your characters that don't load it (see [TSM prices for alts](#tsm-prices-for-alts)). Turning it off deletes the saved prices. |
 | Save prices for | Your recipes (default), All crafting items, or Everything TSM has. |
 
@@ -429,7 +432,7 @@ Click the gear on the panel (or Craftonomics options in the gear menu under the 
 | Show amounts down to | Gold, silver (default) or copper. Not on WoW Forever, which always shows the two biggest coins. |
 | Open with the profession window | The panel opens by itself when you pick a recipe. Off: it stays closed until you click the **Craftonomics** button at the top of the profession window, which opens and closes the panel either way. Also at the bottom of the panel. On by default. |
 | Show disenchant value | On by default. For a recipe that makes a weapon or armor, the panel shows what disenchanting it gives on average, what that leaves after the materials, and a **Disenchant advantage** line when that's more than selling it makes. Needs TSM or Auctionator. |
-| Show expected AH deposit | Off by default. Under Market details, estimates total deposits lost across relistings before the item sells based on its sale rate. |
+| Show expected AH deposit | Off by default. Under Market details, estimates total deposits lost across relistings before the item sells based on its sale rate, using Expected deposit duration. |
 | Lock panel position | Stops the panel from being dragged. |
 | Panel position: Reset | Puts the panel back next to the profession window. |
 | Best crafts text size | Text size inside the Best crafts window, 12pt to 20pt. Also adjustable inside the window. |

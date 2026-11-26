@@ -32,6 +32,11 @@ ns.SELL_DEFAULT_CHOICES = { { "last", "The last one you used" } }
 for index, text in ipairs(ns.AUCTION_DURATIONS) do
 	ns.SELL_DEFAULT_CHOICES[#ns.SELL_DEFAULT_CHOICES + 1] = { tostring(index), text }
 end
+-- Choices for which auction duration estimates expected deposits when counting fees or showing Market details.
+ns.DEPOSIT_DURATION_CHOICES = { { "sell", "Sell tab's duration" } }
+for index, text in ipairs(ns.AUCTION_DURATIONS) do
+	ns.DEPOSIT_DURATION_CHOICES[#ns.DEPOSIT_DURATION_CHOICES + 1] = { tostring(index), text }
+end
 
 -- Panel layout, in pixels before the panel's own scale.
 ns.Layout = {
@@ -94,6 +99,9 @@ ns.DEFAULTS = {
 	saveTSMPrices = false, -- characters with TSM save its prices for the ones without it (see SavedPrices.lua)
 	saveItems = "recipes", -- which items' prices they save (see ns.SAVE_ITEMS_CHOICES)
 	ahCut = true,
+	vendorFloor = true,              -- use vendor sell price as floor when it beats net AH proceeds
+	subtractExpectedDeposit = false, -- subtract expected lost AH deposits from sale proceeds
+	depositDuration = "sell",        -- duration used for expected deposit: "sell" | "1" | "2" | "3"
 	procFx = true,        -- animate multicraft / resourcefulness procs
 	procSound = true,     -- coin sound on procs
 	showSession = true,   -- show the total of this session's crafts

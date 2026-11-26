@@ -430,6 +430,86 @@ function Prices.ExpectedDeposit(deposit, saleRate)
 	return math.floor(deposit * (1 - saleRate) / saleRate + 0.5)
 end
 
+-- What a vendor pays for one of `link` / `itemID`, or nil when unsellable to vendors.
+function Prices.VendorSell(link, itemID)
+	local sell = C_Item and C_Item.GetItemInfo and select(11, C_Item.GetItemInfo(link or itemID))
+	return (type(sell) == "number" and sell > 0) and sell or nil
+end
+
+-- Auction duration index (1..#AUCTION_DURATIONS) used when estimating expected deposits.
+function Prices.DepositDuration()
+	local durations = ns.AUCTION_DURATIONS or {}
+	local choice = ns.db and ns.db.depositDuration
+	local picked = (choice and choice ~= "sell") and tonumber(choice) or nil
+	if picked and durations[picked] then return picked end
+	local sellDuration = ns.db and ns.db.sellDuration
+	if sellDuration and durations[sellDuration] then return sellDuration end
+	return #durations
+end
+
+-- Expected lost AH deposit fee for `made` crafted items, along with sale rate metadata:
+-- `fee, rate, rateFrom, duration, sold, total`, or nil when unavailable / untrusted.
+function Prices.ExpectedDepositFee(link, itemID, made)
+	made = made or 1
+	local id = itemID or (type(link) == "string" and tonumber(link:match("item:(%d+)")))
+	if not (id and made > 0) then return nil end
+	if Prices.HasSaleRate and not Prices.HasSaleRate() then return nil end
+	local rate, rateFrom, sold, total = Prices.SaleRate(link or ("item:" .. id), id)
+	local minSamples = ns.Sales and ns.Sales.MIN_DECISION_SAMPLES or 3
+	if not (rate and rate > 0 and (rateFrom == "tsm" or (total or 0) >= minSamples)) then return nil end
+	local duration = Prices.DepositDuration()
+	local deposit
+	if made == math.floor(made) then
+		deposit = Prices.Deposit(id, duration, made)
+	else
+		local each = Prices.Deposit(id, duration, 1)
+		deposit = each and (each * made) or nil
+	end
+	if not deposit then return nil end
+	local fee = Prices.ExpectedDeposit(deposit, rate)
+	return fee, rate, rateFrom, duration, sold, total
+end
+
+-- Net proceeds for `made` items given per-unit `unitAHPrice`:
+-- subtracts the 5% AH cut (when enabled) and expected AH deposit (when enabled),
+-- then floors at vendor sell price (with 0 AH fees) when vendorFloor is on and vendor > AH net.
+-- Returns `nil` when `unitAHPrice` is missing/non-positive (unpriced items stay unpriced).
+function Prices.NetProceeds(link, itemID, unitAHPrice, made)
+	if not (unitAHPrice and unitAHPrice > 0) then return nil end
+	made = made or 1
+	local gross = unitAHPrice * made
+	local ahCut = (ns.db and ns.db.ahCut) and (gross * (ns.AH_CUT or 0.05)) or 0
+	local expectedDeposit, saleRate, rateFrom, duration, rateSold, rateTotal = 0, nil, nil, nil, nil, nil
+	if ns.db and ns.db.subtractExpectedDeposit then
+		local fee, r, rf, dur, rs, rt = Prices.ExpectedDepositFee(link, itemID, made)
+		if fee then
+			expectedDeposit, saleRate, rateFrom, duration, rateSold, rateTotal = fee, r, rf, dur, rs, rt
+		end
+	end
+	local ahNet = gross - ahCut - expectedDeposit
+	local vendorUnit = (not ns.db or ns.db.vendorFloor ~= false) and Prices.VendorSell(link, itemID) or nil
+	local vendorProceeds = vendorUnit and (vendorUnit * made) or nil
+	local soldToVendor = vendorProceeds ~= nil and vendorProceeds > ahNet
+	local net = soldToVendor and vendorProceeds or ahNet
+	local details = {
+		gross = gross,
+		ahCut = soldToVendor and 0 or ahCut,
+		expectedDeposit = soldToVendor and 0 or expectedDeposit,
+		ahNet = ahNet,
+		rawAhCut = ahCut,
+		rawExpectedDeposit = expectedDeposit,
+		vendorProceeds = vendorProceeds,
+		soldToVendor = soldToVendor,
+		net = net,
+		saleRate = saleRate,
+		rateFrom = rateFrom,
+		duration = duration,
+		rateSold = rateSold,
+		rateTotal = rateTotal,
+	}
+	return net, details
+end
+
 -- Whether TSM is loaded, or another character's save of its prices is used here.
 function Prices.TSMInstalled()
 	return (TSM_API ~= nil and TSM_API.GetCustomPriceValue ~= nil)

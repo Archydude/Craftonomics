@@ -308,6 +308,9 @@ end
 -- of a sale the auction house leaves you.
 local function priceRow(row, buy, keep)
 	row.each, row.gross, row.cost, row.net, row.saleRate, row.soldPerDay = nil, nil, nil, nil, nil, nil
+	row.ahCut, row.expectedDeposit, row.soldToVendor, row.vendorProceeds, row.depositDuration, row.ahNet =
+		nil, nil, nil, nil, nil, nil
+	row.cachedExpectedDeposit = nil
 	row.saleRateFrom, row.saleRateSold, row.saleRateTotal = nil, nil, nil
 	row.market, row.historical, row.listed = nil, nil, nil
 	-- An enchant makes nothing to sell: only its materials have a price.
@@ -320,7 +323,20 @@ local function priceRow(row, buy, keep)
 	-- Without a price the window leaves it out, so there's nothing more to ask.
 	if not row.each then return end
 	priceMaterials(row, buy)
-	row.gross = row.each * row.made * keep
+	if ns.Prices.NetProceeds then
+		local net, info = ns.Prices.NetProceeds(row.link, row.itemID, row.each, row.made)
+		row.gross = net
+		if info then
+			row.ahCut = info.ahCut
+			row.expectedDeposit = info.expectedDeposit
+			row.soldToVendor = info.soldToVendor
+			row.vendorProceeds = info.vendorProceeds
+			row.depositDuration = info.duration
+			row.ahNet = info.ahNet
+		end
+	else
+		row.gross = row.each * row.made * keep
+	end
 	row.net = row.cost and row.gross - row.cost
 	row.saleRate, row.saleRateFrom, row.saleRateSold, row.saleRateTotal = ns.Prices.SaleRate(row.link, row.itemID)
 	row.soldPerDay = ns.Prices.SoldPerDay(row.link)

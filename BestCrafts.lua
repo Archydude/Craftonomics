@@ -27,6 +27,7 @@ local RESCAN_DELAY = 1
 -- }
 local scan
 local active -- the scan in progress (the same as scan, unless the last one is still shown)
+local view   -- the profession currently shown in BestCraftsList: { professionID, baseProfessionID, name }
 local scanStale = false
 local watchers = {} -- who shows the scan: { changed, wanted } each (see BestCrafts.Watch)
 
@@ -251,16 +252,29 @@ function BestCrafts.Scan()
 	if not ns.Blizzard.IsOwnProfession() then return end
 	local professionID, name = shownProfession()
 	if not professionID then return end
+	local baseProfessionID = (ns.Blizzard.ShownBaseProfession and ns.Blizzard.ShownBaseProfession()) or professionID
 	local recipeIDs = (C_TradeSkillUI.GetAllRecipeIDs or C_TradeSkillUI.GetFilteredRecipeIDs)()
 	if not recipeIDs or #recipeIDs == 0 then return end
 
 	-- Each opening of the list asks the price addons again.
 	forgetMarket()
 	scanStale = false
-	local run = { professionID = professionID, name = name, total = 0, done = 0, recipes = {}, seen = {}, finished = false }
+	local run = {
+		professionID = professionID,
+		baseProfessionID = baseProfessionID,
+		name = name,
+		total = 0,
+		done = 0,
+		recipes = {},
+		seen = {},
+		finished = false,
+	}
 	local previous = scan
 	-- Keep showing the last scan of the same profession while this one runs.
 	if not (previous and previous.professionID == professionID and previous.finished) then scan = run end
+	if not view or view.professionID == professionID or view.baseProfessionID == baseProfessionID then
+		view = { professionID = professionID, baseProfessionID = baseProfessionID, name = name }
+	end
 	local thread = coroutine.create(scanAll)
 	active = run
 	local function step()
@@ -282,6 +296,9 @@ function BestCrafts.Scan()
 		if coroutine.status(thread) == "dead" then
 			active = nil
 			scan = run
+			if not view or view.professionID == professionID or view.baseProfessionID == baseProfessionID then
+				view = { professionID = professionID, baseProfessionID = baseProfessionID, name = name }
+			end
 			ns.Scans.Save(run)
 		end
 		onChange()
@@ -329,6 +346,189 @@ end
 -- The scan to show: { name, total, done, finished, recipes }, or nil.
 function BestCrafts.Current()
 	return scan
+end
+
+local function ownProfessions()
+	local list, bySkill = {}, {}
+	if not (GetProfessions and GetProfessionInfo) then return list, bySkill end
+	local first, second, _, _, cooking = GetProfessions()
+	for _, index in ipairs({ first or false, second or false, cooking or false }) do
+		if index then
+			local name, icon, _, _, _, _, skillLine = GetProfessionInfo(index)
+			if name and skillLine then
+				local entry = { skillLine = skillLine, name = name, icon = icon }
+				list[#list + 1] = entry
+				bySkill[skillLine] = entry
+			end
+		end
+	end
+	return list, bySkill
+end
+
+local function baseOf(professionID, savedBase, savedName, myProfs, bySkill)
+	if savedBase and savedBase > 0 then return savedBase end
+	if bySkill[professionID] then return professionID end
+	if C_TradeSkillUI and C_TradeSkillUI.GetProfessionInfoBySkillLineID then
+		local ok, info = pcall(C_TradeSkillUI.GetProfessionInfoBySkillLineID, professionID)
+		if ok and info then
+			if info.parentProfessionID and info.parentProfessionID > 0 then return info.parentProfessionID end
+			if info.professionID and bySkill[info.professionID] then return info.professionID end
+		end
+	end
+	if type(savedName) == "string" and savedName ~= "" then
+		local lower = savedName:lower()
+		for _, prof in ipairs(myProfs) do
+			local pLower = prof.name:lower()
+			if lower == pLower or lower:sub(-#pLower) == pLower then return prof.skillLine end
+		end
+	end
+	return professionID
+end
+
+-- This character's selectable professions for the Best crafts dropdown:
+-- { skillLine, professionID, name, baseName, icon, hasScan, live, scanned } ...
+function BestCrafts.Professions()
+	local myProfs, bySkill = ownProfessions()
+	local savedScans = ns.Scans and ns.Scans.MyScans and ns.Scans.MyScans() or {}
+	local byBase = {}
+	for _, prof in ipairs(myProfs) do byBase[prof.skillLine] = {} end
+
+	local function addCandidate(skillLine, candidate)
+		local bucket = byBase[skillLine]
+		if not bucket then return end
+		for _, existing in ipairs(bucket) do
+			if existing.professionID == candidate.professionID then return end
+		end
+		bucket[#bucket + 1] = candidate
+	end
+
+	if scan and scan.professionID and ns.Blizzard and ns.Blizzard.IsOwnProfession and ns.Blizzard.IsOwnProfession() then
+		local liveBase = scan.baseProfessionID or baseOf(scan.professionID, nil, scan.name, myProfs, bySkill)
+		addCandidate(liveBase, {
+			professionID = scan.professionID,
+			name = scan.name,
+			live = true,
+			time = time and time() or 0,
+		})
+	end
+	for _, s in ipairs(savedScans) do
+		local base = baseOf(s.professionID, s.baseProfessionID, s.name, myProfs, bySkill)
+		addCandidate(base, {
+			professionID = s.professionID,
+			name = s.name,
+			live = false,
+			time = s.time,
+		})
+	end
+
+	local result = {}
+	for _, prof in ipairs(myProfs) do
+		local bucket = byBase[prof.skillLine]
+		if #bucket > 0 then
+			for _, item in ipairs(bucket) do
+				result[#result + 1] = {
+					skillLine = prof.skillLine,
+					professionID = item.professionID,
+					name = item.name or prof.name,
+					baseName = prof.name,
+					icon = prof.icon,
+					hasScan = true,
+					live = item.live,
+					scanned = item.time,
+				}
+			end
+		else
+			result[#result + 1] = {
+				skillLine = prof.skillLine,
+				professionID = prof.skillLine,
+				name = prof.name,
+				baseName = prof.name,
+				icon = prof.icon,
+				hasScan = false,
+				live = false,
+			}
+		end
+	end
+	return result
+end
+
+-- Selects a profession (by `skillLine` or `professionID`) for the Best crafts view.
+function BestCrafts.Select(professionID, baseProfessionID, name)
+	if not professionID then return end
+	local matched
+	for _, prof in ipairs(BestCrafts.Professions()) do
+		if prof.professionID == professionID or prof.skillLine == professionID then
+			matched = prof
+			break
+		end
+	end
+	if matched then
+		view = {
+			professionID = matched.professionID,
+			baseProfessionID = matched.skillLine,
+			name = matched.name,
+			hasScan = matched.hasScan,
+		}
+	else
+		view = {
+			professionID = professionID,
+			baseProfessionID = baseProfessionID or professionID,
+			name = name,
+		}
+	end
+	if view.baseProfessionID then
+		CraftonomicsCharDB = CraftonomicsCharDB or {}
+		CraftonomicsCharDB.lastProfession = view.baseProfessionID
+	end
+	forgetMarket()
+	onChange()
+	return view
+end
+
+-- The currently selected Best crafts view, or nil when nothing is selected or scanned.
+function BestCrafts.View()
+	if not view then
+		if scan then
+			return {
+				professionID = scan.professionID,
+				baseProfessionID = scan.baseProfessionID,
+				name = scan.name,
+				hasScan = true,
+				live = true,
+			}
+		end
+		return nil
+	end
+	if scan and (scan.professionID == view.professionID
+		or (view.professionID == view.baseProfessionID and scan.baseProfessionID == view.baseProfessionID)) then
+		return {
+			professionID = scan.professionID,
+			baseProfessionID = scan.baseProfessionID or view.baseProfessionID,
+			name = scan.name,
+			hasScan = true,
+			live = true,
+		}
+	end
+	if ns.Scans and ns.Scans.ForMe then
+		local entries, saved = ns.Scans.ForMe(view.professionID)
+		if entries and saved then
+			return {
+				professionID = view.professionID,
+				baseProfessionID = saved.baseProfessionID or view.baseProfessionID,
+				name = saved.name or view.name,
+				hasScan = true,
+				live = false,
+				scanned = saved.time,
+			}
+		end
+	end
+	return {
+		professionID = view.professionID,
+		baseProfessionID = view.baseProfessionID,
+		name = view.name,
+		hasScan = false,
+		live = false,
+	}
 end
 
 -- Whether the entry is this character's, not another's saved one.
@@ -553,8 +753,9 @@ end
 
 -- Seconds until the recipe can be crafted again, or nil when it can now.
 local function cooldownOf(recipeID)
-	local cooldown, _, charges, maxCharges = C_TradeSkillUI.GetRecipeCooldown(recipeID)
-	if not (cooldown and cooldown > 0) then return end
+	if not (C_TradeSkillUI and C_TradeSkillUI.GetRecipeCooldown) then return end
+	local ok, cooldown, _, charges, maxCharges = pcall(C_TradeSkillUI.GetRecipeCooldown, recipeID)
+	if not (ok and cooldown and cooldown > 0) then return end
 	if maxCharges and maxCharges > 0 and charges and charges > 0 then return end
 	return cooldown
 end
@@ -577,7 +778,7 @@ end
 local function priceEntry(entry)
 	local sales = {}
 	for rank, output in pairs(entry.outputs) do sales[rank] = salePrice(output.link, output.itemID) end
-	local prices, cappedBy = ns.Planner.RankPrices(sales, entry.maxRank, entry.schematic)
+	local prices, cappedBy, saleDetails = ns.Planner.RankPrices(sales, entry.maxRank, entry.schematic, entry.outputs)
 
 	local options = {}
 	for _, option in ipairs(entry.options) do
@@ -598,19 +799,21 @@ local function priceEntry(entry)
 
 	local row = { entry = entry, firstCraft = false }
 	-- What the game says is about this character, so only for its own recipes.
-	if BestCrafts.IsMine(entry) and C_TradeSkillUI.IsRecipeFirstCraft then
-		row.firstCraft = C_TradeSkillUI.IsRecipeFirstCraft(entry.recipeID) or false
+	if BestCrafts.IsMine(entry) and C_TradeSkillUI and C_TradeSkillUI.IsRecipeFirstCraft then
+		local ok, first = pcall(C_TradeSkillUI.IsRecipeFirstCraft, entry.recipeID)
+		row.firstCraft = (ok and first) or false
 	end
 	row.quality = best.quality
 	row.picks, row.cost, row.unpriced, row.short = best.option.picks, best.full, best.unpriced, best.short
 	-- The game also counts what you can make with a slot split across qualities.
-	if row.short and BestCrafts.IsMine(entry) then
-		local info = C_TradeSkillUI.GetRecipeInfo(entry.recipeID)
-		row.short = not (info and (info.numAvailable or 0) > 0)
+	if row.short and BestCrafts.IsMine(entry) and C_TradeSkillUI and C_TradeSkillUI.GetRecipeInfo then
+		local ok, info = pcall(C_TradeSkillUI.GetRecipeInfo, entry.recipeID)
+		row.short = not (ok and info and (info.numAvailable or 0) > 0)
 	end
 	local sale = row.quality and prices[row.quality]
 	if sale then
 		row.sale, row.profit = sale, sale - best.full
+		row.saleInfo = saleDetails and saleDetails[row.quality]
 		row.cappedBy = cappedBy[row.quality]
 		row.listedPrice = row.cappedBy and sales[row.quality]
 	else
@@ -684,12 +887,11 @@ local function refreshRow(row)
 	row.cooldown = BestCrafts.IsMine(entry) and cooldownOf(entry.recipeID) or nil
 end
 
--- Every scanned recipe as a list row (see priceEntry), with All characters on,
--- your characters' saved ones too. Rows are priced once and kept until
--- BestCrafts.Reprice.
+-- Every recipe of the selected profession (live scan or saved scan priced live),
+-- or with All characters on, every saved recipe across all characters.
+-- Rows are priced once and kept until BestCrafts.Reprice.
 function BestCrafts.Rows()
 	local rows = {}
-	if not scan then return rows end
 	if not effectiveCost then BestCrafts.Reprice() end
 	local function add(entry)
 		local row = priced[entry]
@@ -700,10 +902,23 @@ function BestCrafts.Rows()
 		refreshRow(row)
 		rows[#rows + 1] = row
 	end
-	for _, entry in ipairs(scan.recipes) do add(entry) end
-	if ns.db.bestAllCharacters then
-		for _, entry in ipairs(ns.Scans.Entries(scan.professionID)) do add(entry) end
+	if ns.db and ns.db.bestAllCharacters then
+		if scan then
+			for _, entry in ipairs(scan.recipes) do add(entry) end
+		end
+		if ns.Scans and ns.Scans.Entries then
+			for _, entry in ipairs(ns.Scans.Entries(scan and scan.professionID or nil)) do add(entry) end
+		end
+		return rows
 	end
+	local activeView = BestCrafts.View()
+	if not activeView then return rows end
+	if activeView.live and scan then
+		for _, entry in ipairs(scan.recipes) do add(entry) end
+		return rows
+	end
+	local entries = ns.Scans and ns.Scans.ForMe and ns.Scans.ForMe(activeView.professionID)
+	for _, entry in ipairs(entries or {}) do add(entry) end
 	return rows
 end
 

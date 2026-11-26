@@ -37,7 +37,9 @@ end
 local STRATEGY_KEYS = {
 	craftStrategy = true, concentrationStrategy = true,
 	patronMaterials = true, patronReach = true, concentrationFor = true,
-	countPatronBags = true, countProcs = true, ahCut = true, provider = true, matSource = true, saleSource = true, vendorOnAH = true,
+	countPatronBags = true, countProcs = true, ahCut = true, vendorFloor = true,
+	subtractExpectedDeposit = true, depositDuration = true, provider = true, matSource = true,
+	saleSource = true, vendorOnAH = true,
 }
 
 -- Any change re-places and redraws the panel. Prices and the concentration
@@ -258,6 +260,18 @@ function Options.Create()
 		"when the shopping list gets it.\n\nAlso on the panel when a recipe is open.")
 	checkbox("ahCut", format("Subtract auction house cut (%d%%)", ns.AH_CUT * 100),
 		"The auction house keeps 5% of every sale.")
+	checkbox("vendorFloor", "Use vendor price as minimum sale price",
+		"When an item's auction house proceeds (after fees) are less than what a vendor pays for it, use the vendor " ..
+		"sell price instead with no auction house fees.\n\nItems with no auction house price still show as unpriced.")
+	checkbox("subtractExpectedDeposit", "Subtract expected AH deposit",
+		"Subtracts expected lost auction house deposits from sale proceeds and profits, based on the item's sale rate.\n\n" ..
+		"Because the final successful sale refunds its deposit, an item with a 33% sale rate loses about twice a " ..
+		"single listing's deposit on average.\n\n" ..
+		"Uses TSM's sale rate or your own personal sale rate (once you have at least 3 finished auctions). Skipped when " ..
+		"no sale rate is available or when vendoring pays more.")
+	dropdown("depositDuration", "Expected deposit duration", ns.DEPOSIT_DURATION_CHOICES,
+		"Which auction duration to use when estimating expected auction house deposits for fees and Market details.\n\n" ..
+		"Sell tab's duration uses the duration picked on Craftonomics' Sell tab (or the longest duration when none is picked).")
 
 	header("TSM prices for alts")
 	checkbox("saveTSMPrices", "Save TSM prices for alts",
@@ -298,8 +312,8 @@ function Options.Create()
 		"can't price what the item disenchants into, the lines don't show.")
 	checkbox("panelExpectedDeposit", "Show expected AH deposit",
 		"Under Market details: an estimate of the auction house deposit lost across relistings before the item sells, " ..
-		"for the duration picked on the Sell tab (or the longest when none is picked). Since the final sale refunds " ..
-		"its deposit, an item with a 33% sale rate loses about twice a single listing's deposit on average.\n\n" ..
+		"using the Expected deposit duration set under Prices. Since the final sale refunds its deposit, an item with a " ..
+		"33% sale rate loses about twice a single listing's deposit on average.\n\n" ..
 		"Uses TSM's sale rate or your own personal sale rate (once you have at least 3 finished auctions).")
 
 	header("Look")

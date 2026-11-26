@@ -539,8 +539,10 @@ function Blizzard.RecipeList()
 	return ProfessionsFrame.CraftingPage.RecipeList
 end
 
--- Whether the crafting page shows its recipe list (it's hidden in the small view).
+-- Whether the crafting page shows its recipe list (it's hidden in the small view,
+-- and false when the profession window isn't loaded yet).
 function Blizzard.ShowsRecipeList()
+	if not Blizzard.IsLoaded() then return false end
 	local page = ProfessionsFrame.CraftingPage
 	return page:IsVisible() and page.RecipeList:IsShown()
 end
@@ -753,32 +755,45 @@ end
 -- before its recipe is shown: its window takes a moment to be ready.
 local RECIPE_RETRY, RECIPE_TRIES = 0.2, 10
 
--- Shows one of your recipes, opening its profession first when the window shows
--- another one (smelting, for an Engineering material). `professionID` is the
--- recipe's base profession, when it's known. False when that profession couldn't
--- be opened.
+-- Shows one of your recipes, opening its profession first when the window is
+-- closed or shows another one (smelting, for an Engineering material).
+-- `professionID` is the recipe's base or expansion profession, when known.
+-- False when that profession couldn't be opened.
 function Blizzard.OpenRecipe(recipeID, professionID)
 	-- The game can know a profession by a second number, for a part of it (WoW
-	-- Forever's Engineering is 202, its recipes' part 2941), and only opens it by
-	-- the first: the part's parent.
-	local part = professionID and C_TradeSkillUI.GetProfessionInfoByRecipeID(recipeID)
+	-- Forever's Engineering is 202, its recipes' part 2941, or Retail expansions),
+	-- and opens the window by its parent base profession.
+	local part = C_TradeSkillUI.GetProfessionInfoByRecipeID and C_TradeSkillUI.GetProfessionInfoByRecipeID(recipeID)
 	local parent = part and part.parentProfessionID
-	if parent and parent > 0 then professionID = parent end
-	if not professionID or Blizzard.ShownBaseProfession() == professionID then
+	if parent and parent > 0 then
+		professionID = parent
+	elseif not professionID and part and part.professionID and part.professionID > 0 then
+		professionID = part.professionID
+	end
+	local windowShown = Blizzard.IsLoaded() and ProfessionsFrame:IsShown() and Blizzard.IsOwnProfession()
+	if windowShown and (not professionID or Blizzard.ShownBaseProfession() == professionID) then
+		if not Blizzard.ShowsRecipeList() then Blizzard.ShowRecipesTab() end
 		Blizzard.ShowRecipe(recipeID)
 		return true
 	end
-	if not C_TradeSkillUI.OpenTradeSkill(professionID) then return false end
-	local tries = 0
-	local function try()
-		tries = tries + 1
-		if Blizzard.ShownBaseProfession() == professionID and Blizzard.ShowsRecipeList() then
-			Blizzard.ShowRecipe(recipeID)
-		elseif tries < RECIPE_TRIES then
-			C_Timer.After(RECIPE_RETRY, try)
+	if professionID then
+		if not C_TradeSkillUI.OpenTradeSkill(professionID) then return false end
+		local tries = 0
+		local function try()
+			tries = tries + 1
+			local ready = Blizzard.IsLoaded() and ProfessionsFrame:IsShown()
+				and Blizzard.ShownBaseProfession() == professionID
+			if ready and not Blizzard.ShowsRecipeList() then Blizzard.ShowRecipesTab() end
+			if ready and Blizzard.ShowsRecipeList() then
+				Blizzard.ShowRecipe(recipeID)
+			elseif tries < RECIPE_TRIES then
+				C_Timer.After(RECIPE_RETRY, try)
+			end
 		end
+		C_Timer.After(0, try)
+		return true
 	end
-	C_Timer.After(0, try)
+	C_TradeSkillUI.OpenRecipe(recipeID)
 	return true
 end
 

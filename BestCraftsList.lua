@@ -41,9 +41,10 @@ local SIDE_TAB_ICON = "Interface\\AddOns\\Craftonomics\\Media\\logo" -- the addo
 local RESIZE_UP = "Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up"
 local RESIZE_HIGHLIGHT = "Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Highlight"
 local RESIZE_DOWN = "Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Down"
-local OPEN_TRIES, OPEN_RETRY = 20, 0.1 -- from an order: waiting for the recipes to show
+local OPEN_RETRY = 0.1     -- delay between checks after a profession switch
 local REOPEN_TRIES = 40     -- after a profession switch: waiting for its recipes (OPEN_RETRY apart)
 local FILTER_WIDTH = 90
+local PROFESSION_WIDTH = 185
 local TEXT_SIZE_WIDTH = 114
 local STRATEGY_WIDTH = 136  -- the crafting strategy dropdown at the bottom
 local STRATEGY_LABEL = "Strategy:"
@@ -241,9 +242,10 @@ local SORT_ARROW_SIZE = 10
 local MAX_SORTS = 2        -- how many columns the list sorts by at once
 
 local list, listTab, ledgerButton, scrollBox, scrollView, headerBar, status
-local strategyDropdown, textSizeDropdown, charactersButton, emptyText
+local professionDropdown, strategyDropdown, textSizeDropdown, charactersButton, allRecipesButton, emptyText
 local headers = {}
 local refreshQueued = false
+local watched, attached = false, false
 
 local function signedMoney(amount)
 	return Color(ns.AmountColor(amount), (amount > 0 and "+" or "") .. Money(amount))
@@ -431,10 +433,25 @@ local function visibleRows()
 	return shown, short
 end
 
+local function activeViewInfo()
+	return (ns.BestCrafts.View and ns.BestCrafts.View()) or ns.BestCrafts.Current()
+end
+
 -- What an empty list says, or nil while it has rows, none to filter, or prices
 -- are still being worked out. `short`: see visibleRows.
 local function emptyNote(count, short)
-	if count > 0 or #allRows == 0 or ns.BestCrafts.Progress() then return end
+	if count > 0 or ns.BestCrafts.Progress() then return end
+	local activeView = activeViewInfo()
+	if #allRows == 0 then
+		if ns.db.bestAllCharacters then
+			return "No scanned professions yet.\n\nOpen a profession window once so Craftonomics can scan your recipes."
+		end
+		if activeView and activeView.name and activeView.hasScan == false then
+			return format("No saved recipes for %s yet.\n\nOpen %s once so Craftonomics can scan your recipes and skill.",
+				activeView.name, activeView.name)
+		end
+		return "No scanned recipes to show yet.\n\nOpen a profession window once so Craftonomics can scan your recipes."
+	end
 	if short > 0 then
 		if ns.db.bestCanCraft and ns.db.craftStrategy ~= "owned" then
 			return "Nothing you can craft with what you own.\n\nTurn off Can craft now in the Filter menu to see the rest."
@@ -474,10 +491,13 @@ end
 
 local function rowTooltip(tip, row)
 	local entry = row.entry
+	local activeView = (ns.BestCrafts.View and ns.BestCrafts.View()) or ns.BestCrafts.Current()
 	tip:SetText(entry.name or "?")
 	if ns.db.bestAllCharacters then
 		addPair(tip, "Crafter", ns.Ranks.CharacterName(crafterKey(row)))
 		if entry.scanned then addLine(tip, scanAgeText(entry)) end
+	elseif entry.scanned and not (activeView and activeView.live) then
+		addLine(tip, scanAgeText(entry))
 	end
 	local schematic = entry.schematic
 	local qtyMin, qtyMax = schematic.quantityMin or 1, schematic.quantityMax or 1
@@ -486,8 +506,28 @@ local function rowTooltip(tip, row)
 	end
 
 	if row.profit then
-		local sellText = ns.db.ahCut and format("Sells for (after %d%% AH cut)", ns.AH_CUT * 100) or "Sells for"
-		addPair(tip, sellText, Money(row.sale))
+		local info = row.saleInfo
+		if info and info.soldToVendor then
+			addPair(tip, "Sells for " .. Color("muted", "(vendor)"), Money(row.sale))
+			addPair(tip, Color("muted", "  AH after fees"), Color("muted", Money(info.ahNet)))
+		else
+			local sellText
+			if info and info.ahCut > 0 and info.expectedDeposit > 0 then
+				sellText = format("Sells for (after %d%% AH cut + deposit)", ns.AH_CUT * 100)
+			elseif info and info.expectedDeposit > 0 then
+				sellText = "Sells for (after deposit)"
+			elseif ns.db.ahCut then
+				sellText = format("Sells for (after %d%% AH cut)", ns.AH_CUT * 100)
+			else
+				sellText = "Sells for"
+			end
+			addPair(tip, sellText, Money(row.sale))
+			if info and info.expectedDeposit > 0 then
+				local durText = ns.AUCTION_DURATIONS[info.duration] or ""
+				addPair(tip, Color("muted", format("  Expected deposit (%s)", durText)),
+					Color("muted", Money(-info.expectedDeposit)))
+			end
+		end
 		if row.cappedBy then
 			tip:AddLine(ns.Model.CappedNote(entry.recipeID, row.cappedBy, row.listedPrice), 0.53, 0.53, 0.53, true)
 		end
@@ -869,8 +909,8 @@ end
 local function statusText(count, total)
 	local done, scanTotal = ns.BestCrafts.Progress()
 	if done then return format("Pricing %d of %d recipes...", done, scanTotal) end
-	local scan = ns.BestCrafts.Current()
-	if not scan then return "" end
+	local active = activeViewInfo()
+	if total == 0 and not (active and active.hasScan ~= false) and not ns.db.bestAllCharacters then return "" end
 	local text = count == total and format("%d recipes", total) or format("%d of %d recipes", count, total)
 	return Color("muted", text .. " · Prices: " .. ns.Prices.SourceLabel()) .. ns.Reminder.FooterText()
 end
@@ -879,8 +919,8 @@ function BestCraftsList.Render()
 	refreshQueued = false
 	if not (list and list:IsShown()) then return end
 	applyFontIfChanged()
-	local scan = ns.BestCrafts.Current()
-	local shown = ns.db.bestAllCharacters and "All characters" or (scan and scan.name)
+	local active = activeViewInfo()
+	local shown = ns.db.bestAllCharacters and "All characters" or (active and active.name)
 	list:SetTitle("Best crafts" .. (shown and ("  " .. Color("muted", shown)) or ""))
 	if ns.db.bestAllCharacters then charactersButton:LockHighlight() else charactersButton:UnlockHighlight() end
 	local rows, short = visibleRows()
@@ -890,7 +930,8 @@ function BestCraftsList.Render()
 	local note = emptyNote(#rows, short)
 	emptyText:SetText(note or "")
 	emptyText:SetShown(note ~= nil)
-	-- The strategy and text size can change in the options too.
+	-- The profession, strategy, and text size can change outside the dropdowns too.
+	if professionDropdown and professionDropdown.GenerateMenu then professionDropdown:GenerateMenu() end
 	if strategyDropdown then strategyDropdown:GenerateMenu() end
 	if textSizeDropdown then textSizeDropdown:GenerateMenu() end
 	updateHeaders()
@@ -1135,6 +1176,54 @@ local function textSizeMenu(_, root)
 	end
 end
 
+-- Whether the profession window shows this character's recipe list right now.
+local function canShow()
+	return ns.Blizzard.IsOwnProfession() and ns.Blizzard.ShowsRecipeList()
+end
+
+local function professionMenu(_, root)
+	local profs = ns.BestCrafts.Professions and ns.BestCrafts.Professions() or {}
+	if #profs == 0 then
+		root:CreateTitle("No professions")
+		return
+	end
+	local active = activeViewInfo()
+	for _, prof in ipairs(profs) do
+		local text = prof.icon and format("|T%s:16|t %s", prof.icon, prof.name) or prof.name
+		if not prof.hasScan then text = text .. " " .. Color("muted", "(not scanned)") end
+		root:CreateRadio(text,
+			function() return not ns.db.bestAllCharacters and active ~= nil and active.professionID == prof.professionID end,
+			function()
+				ns.db.bestAllCharacters = false
+				if ns.BestCrafts.Select then ns.BestCrafts.Select(prof.professionID, prof.skillLine, prof.name) end
+				if canShow() and ns.Blizzard.ShownBaseProfession() == prof.skillLine then ns.BestCrafts.Scan() end
+				BestCraftsList.Render()
+			end, prof)
+	end
+end
+
+local function createProfessionDropdown()
+	professionDropdown = CreateFrame("DropdownButton", nil, list, "WowStyle1DropdownTemplate")
+	professionDropdown:SetWidth(PROFESSION_WIDTH)
+	professionDropdown:SetPoint("RIGHT", textSizeDropdown, "LEFT", -8, 0)
+	if professionDropdown.SetSelectionTranslator then
+		professionDropdown:SetSelectionTranslator(function()
+			if ns.db.bestAllCharacters then return "All characters" end
+			local active = activeViewInfo()
+			return (active and active.name) or "Profession"
+		end)
+	end
+	professionDropdown:SetupMenu(professionMenu)
+	professionDropdown:HookScript("OnEnter", function(self)
+		GameTooltip:SetOwner(self, "ANCHOR_TOP")
+		GameTooltip:SetText("Profession")
+		GameTooltip:AddLine("Pick which of your professions to show in Best crafts using saved scan data at "
+			.. "today's prices, without opening the profession window.", 1, 1, 1, true)
+		GameTooltip:Show()
+	end)
+	professionDropdown:HookScript("OnLeave", GameTooltip_Hide)
+end
+
 local function createTextSizeDropdown()
 	textSizeDropdown = CreateFrame("DropdownButton", nil, list, "WowStyle1DropdownTemplate")
 	textSizeDropdown:SetWidth(TEXT_SIZE_WIDTH)
@@ -1186,6 +1275,26 @@ local function createCharactersButton(strategyWidth)
 		GameTooltip:Show()
 	end)
 	charactersButton:SetScript("OnLeave", GameTooltip_Hide)
+end
+
+-- Left of All characters: toggles the All recipes window.
+local function createAllRecipesButton()
+	allRecipesButton = CreateFrame("Button", nil, list, "UIPanelButtonTemplate")
+	allRecipesButton:SetText("All recipes")
+	allRecipesButton:SetSize(allRecipesButton:GetFontString():GetUnboundedStringWidth() + 24, 22)
+	allRecipesButton:SetPoint("RIGHT", charactersButton, "LEFT", -8, 0)
+	allRecipesButton:SetScript("OnClick", function()
+		if ns.AllRecipesWindow and ns.AllRecipesWindow.Toggle then ns.AllRecipesWindow.Toggle() end
+	end)
+	allRecipesButton:SetScript("OnEnter", function(self)
+		GameTooltip:SetOwner(self, "ANCHOR_TOP")
+		GameTooltip:SetText("All recipes")
+		GameTooltip:AddLine("Every profession's recipes, known or not, with what one craft makes and how well it sells.",
+			1, 1, 1, true)
+		GameTooltip:AddLine(Color("simulated", "Click: open All recipes"))
+		GameTooltip:Show()
+	end)
+	allRecipesButton:SetScript("OnLeave", GameTooltip_Hide)
 end
 
 local function clampSize(w, h)
@@ -1376,6 +1485,7 @@ local function createList()
 	filter:SetDefaultCallback(resetFilters)
 
 	createTextSizeDropdown()
+	createProfessionDropdown()
 
 	scrollBox = CreateFrame("Frame", nil, list, "WowScrollBoxList")
 	scrollBox:SetPoint("TOPLEFT", list.Inset, "TOPLEFT", INSET_PAD, -(INSET_PAD + m.headerHeight))
@@ -1410,9 +1520,10 @@ local function createList()
 
 	local strategyWidth = createStrategyDropdown()
 	createCharactersButton(strategyWidth)
+	createAllRecipesButton()
 	status = list:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
 	status:SetPoint("BOTTOMLEFT", SIDE + 4, 10)
-	status:SetPoint("RIGHT", charactersButton, "LEFT", -8, 0)
+	status:SetPoint("RIGHT", allRecipesButton, "LEFT", -8, 0)
 	status:SetJustifyH("LEFT")
 	status:SetWordWrap(false)
 
@@ -1453,9 +1564,65 @@ end
 -- Opening and closing
 ---------------------------------------------------------------------------
 
--- Whether the list can scan this character's active profession right now.
-local function canShow()
-	return ns.Blizzard.IsOwnProfession() and ns.Blizzard.ShowsRecipeList()
+-- Whether you opened the list and haven't closed it, and which profession it last scanned.
+local wantOpen = false
+local openFor
+
+local function ensureWatch()
+	if watched then return end
+	watched = true
+	ns.BestCrafts.Watch(BestCraftsList.Refresh, function() return list ~= nil and list:IsShown() end)
+end
+
+local function pickDefaultProfession()
+	local profs = ns.BestCrafts.Professions and ns.BestCrafts.Professions() or {}
+	if #profs == 0 then return end
+	local last = CraftonomicsCharDB and CraftonomicsCharDB.lastProfession
+	if last then
+		for _, prof in ipairs(profs) do
+			if prof.skillLine == last then return prof end
+		end
+	end
+	for _, prof in ipairs(profs) do
+		if prof.hasScan then return prof end
+	end
+	return profs[1]
+end
+
+function BestCraftsList.Show(skillLine)
+	createList()
+	ensureWatch()
+	local can = canShow()
+	local openProf = can and ns.Blizzard.ShownBaseProfession() or nil
+	if skillLine then
+		ns.db.bestAllCharacters = false
+		if ns.BestCrafts.Select then ns.BestCrafts.Select(skillLine) end
+	elseif openProf then
+		if ns.BestCrafts.Select then ns.BestCrafts.Select(openProf) end
+	elseif ns.BestCrafts.View and not ns.BestCrafts.View() then
+		local picked = pickDefaultProfession()
+		if picked then ns.BestCrafts.Select(picked.professionID, picked.skillLine, picked.name) end
+	end
+	wantOpen, openFor = true, openProf
+	list:Show()
+	if list.Raise then list:Raise() end
+	BestCraftsList.UpdateTab()
+	local active = activeViewInfo()
+	if can and (not active or not active.baseProfessionID or active.baseProfessionID == openProf) then
+		ns.BestCrafts.Scan()
+	end
+	BestCraftsList.Render()
+	local text = ns.Reminder.BestCraftsNotice()
+	if text then showNotice(text) end
+	return true
+end
+
+function BestCraftsList.Toggle(skillLine)
+	if list and list:IsShown() and not skillLine then
+		BestCraftsList.Hide()
+	else
+		BestCraftsList.Show(skillLine)
+	end
 end
 
 -- Shows the tab with the profession's own tabs, selected while the window is open,
@@ -1495,24 +1662,6 @@ function BestCraftsList.HeaderSpace()
 	return ledgerButton and ledgerButton:IsShown() and (ledgerButton:GetWidth() + LEDGER_GAP) or 0
 end
 
--- Whether you opened the list and haven't closed it, and which profession it last scanned.
-local wantOpen = false
-local openFor
-
-function BestCraftsList.Show()
-	createList()
-	if not canShow() then return false end
-	wantOpen, openFor = true, ns.Blizzard.ShownBaseProfession()
-	list:Show()
-	if list.Raise then list:Raise() end
-	BestCraftsList.UpdateTab()
-	ns.BestCrafts.Scan()
-	BestCraftsList.Render()
-	local text = ns.Reminder.BestCraftsNotice()
-	if text then showNotice(text) end
-	return true
-end
-
 function BestCraftsList.IsShown()
 	return list ~= nil and list:IsVisible()
 end
@@ -1533,6 +1682,7 @@ local function rescanSoon()
 		if not wantOpen or not (list and list:IsShown()) then return end
 		if canShow() then
 			openFor = ns.Blizzard.ShownBaseProfession()
+			if not ns.db.bestAllCharacters and ns.BestCrafts.Select then ns.BestCrafts.Select(openFor) end
 			ns.BestCrafts.Scan()
 			BestCraftsList.Render()
 			BestCraftsList.UpdateTab()
@@ -1550,16 +1700,7 @@ local function openFromTab()
 		BestCraftsList.Hide()
 		return
 	end
-	if BestCraftsList.Show() or not ns.Blizzard.IsOwnProfession() then return end
-	-- From another page: back to the recipes, and show once they load.
-	ns.Blizzard.ShowRecipesTab()
-	local tries = 0
-	local function try()
-		tries = tries + 1
-		if BestCraftsList.Show() or tries >= OPEN_TRIES then return end
-		C_Timer.After(OPEN_RETRY, try)
-	end
-	C_Timer.After(0, try)
+	BestCraftsList.Show()
 end
 
 -- The crafting page showed another recipe. Switching to another profession
@@ -1568,6 +1709,7 @@ end
 local function onSelectRecipe()
 	if list and list:IsShown() and canShow() and ns.Blizzard.ShownBaseProfession() ~= openFor then
 		openFor = ns.Blizzard.ShownBaseProfession()
+		if not ns.db.bestAllCharacters and ns.BestCrafts.Select then ns.BestCrafts.Select(openFor) end
 		ns.BestCrafts.Scan()
 		BestCraftsList.Render()
 	end
@@ -1577,10 +1719,12 @@ end
 -- tab state updated, and rescan if the window is open on a new profession.
 local function onLayout()
 	BestCraftsList.UpdateTab()
-	if list and list:IsShown() and wantOpen and not canShow() then
+	local frameShown = ns.Blizzard.IsLoaded() and ProfessionsFrame and ProfessionsFrame:IsShown()
+	if list and list:IsShown() and wantOpen and frameShown and not canShow() then
 		rescanSoon()
 	elseif list and list:IsShown() and canShow() and ns.Blizzard.ShownBaseProfession() ~= openFor then
 		openFor = ns.Blizzard.ShownBaseProfession()
+		if not ns.db.bestAllCharacters and ns.BestCrafts.Select then ns.BestCrafts.Select(openFor) end
 		ns.BestCrafts.Scan()
 		BestCraftsList.Render()
 	end
@@ -1649,13 +1793,14 @@ local function createLedgerButton()
 	ledgerButton:SetScript("OnLeave", GameTooltip_Hide)
 end
 
--- Creates the window, the tab and the panel's button. Safe to call more than once; needs the panel.
+-- Attaches the profession window tab, panel button, and crafting-page hooks once Blizzard_Professions loads.
 function BestCraftsList.Init()
-	if list or not (ns.Blizzard.IsLoaded() and ns.Panel.Frame()) then return end
+	if attached or not (ns.Blizzard.IsLoaded() and ns.Panel.Frame()) then return end
+	attached = true
 	createList()
+	ensureWatch()
 	createTab()
 	createLedgerButton()
-	ns.BestCrafts.Watch(BestCraftsList.Refresh, function() return list ~= nil and list:IsShown() end)
 	ns.Blizzard.WatchCraftingPage(onSelectRecipe, onLayout)
 	ns.Panel.Refresh()
 end

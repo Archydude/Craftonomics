@@ -2,10 +2,16 @@
 ArchdudeWhatsNew:Register("Craftonomics", {
 	title = "Craftonomics",
 	icon = "Interface\\Icons\\INV_Hammer_20",
-	version = "5.18.0",
+	version = "5.19.0",
 	seen = "CraftonomicsWhatsNew",
 	saved = { "CraftonomicsDB", "CraftonomicsCharDB" },
 	changes = {
+		{ "5.19.0",
+			"|cffffd100Vendor price floor for sale proceeds:|r when an item's vendor sell value pays more than its net auction house proceeds (after enabled fees), Craftonomics now uses the vendor sell price with no auction house fees instead. Items with no auction house price continue to show as unpriced rather than falling back to vendor price. On by default; toggle with |cffffd100Use vendor price as minimum sale price|r on the Prices options page.",
+			"|cffffd100Subtract expected AH deposit as a fee (optional):|r turn on |cffffd100Subtract expected AH deposit|r on the Prices options page (off by default) to deduct expected lost auction house deposits across relistings right alongside the 5% auction house cut across the panel, break-even price, Best crafts, All recipes, Recipe Profit tooltips, and Craft vs AH tooltips. Pick which duration to estimate with |cffffd100Expected deposit duration|r (|cffffd100Sell tab's duration|r, or |cffffd10012h|r / |cffffd10024h|r / |cffffd10048h|r on Retail and |cffffd1002h|r / |cffffd1008h|r / |cffffd10024h|r on WoW Forever).",
+			"|cffffd100Standalone Best crafts opening, Profession dropdown, and All recipes button:|r opening Best crafts from the minimap button, minimap menu, or |cffffd100/craftonomics best|r now opens the Best crafts window by itself without opening Blizzard's profession window — clicking a recipe row opens the profession window straight to that recipe. Switch between your character's professions with the new |cffffd100Profession|r dropdown, or jump straight to |cffffd100All recipes|r with the new button in the bottom bar.",
+			"|cffffd100All recipes Columns picker (up to 6 optional columns):|r click |cffffd100Columns|r next to Filters (or right-click any column header) to choose up to 6 optional columns alongside |cffffd100Item|r and |cffffd100Net Profit|r — including |cffffd100Sale Each|r, |cffffd100Return|r, |cffffd100Gold/day|r, |cffffd100Exp. Deposit|r, |cffffd100Trend|r, and |cffffd100Listed|r — with a live |cffffd100N/6|r counter that greys out unselected columns at |cffffd1006/6|r, plus |cffffd100Default columns|r to reset.",
+		},
 		{ "5.18.0",
 			"|cffffd100Standalone, resizable Best crafts window and text size:|r Best crafts now opens in its own movable, resizable window alongside your crafting window so you can browse recipes side by side. Drag its bottom-right corner to resize it, pick your |cffffd100Text size|r (|cffffd10012pt|r–|cffffd10020pt|r) inside the window or in Panel options so item names aren't clipped, and use |cffffd100Reset|r in Panel options to restore the default size and position.",
 			"|cffffd100Market Value, Trend, Lowest vs Market and Heatmap without TSM:|r Craftonomics' scan now keeps 60 days of daily prices and reads |cffffd100Auctionator|r scan history too, bringing 14-day |cffffd100Market Value|r (with extreme outliers filtered out), |cffffd100Trend|r, |cffffd100Lowest vs Market|r, and a listed-value |cffffd100Heatmap|r even when you don't use TSM.",
@@ -50,10 +56,6 @@ ArchdudeWhatsNew:Register("Craftonomics", {
 		{ "5.12.1",
 			"|cffffd100Ledger: On the auction house.|r The second total, Waiting to sell, is now |cffffd100On the auction house|r: only what you posted and hasn't sold, for what you posted it for after the cut. What you still have and haven't posted is |cffffd100Not posted|r. The bar splits into Sold, Posted, Not posted, Used and Gone, each row has a |cffffd100Posted|r column, and an item's status says |cffffd100On the auction house|r or |cffffd100Not posted|r. An auction counts until it sells, you cancel it or its time is over. Auctions from before this version count as up for the longest posting time, so the first day can be off.",
 			"|cffffd100Ledger: totals that add up.|r Profit so far, On the auction house and If it all sells now count the same crafts: the ones with a materials cost on record. |cffffd100If it all sells|r is the profit so far plus what the posted items would make. Hover a total for its sum line by line. Crafts with no cost on record are left out of the totals; the footer says how many, and the tooltips what they sold for and what's left of them.",
-		},
-		{ "5.12.0",
-			"|cffffd100Max button on the panel:|r left of the Craft button, |cffffd100Max|r starts as many crafts as your materials make, as the game's Create All button does. It says how many, like |cffffd100Max 30|r, and is greyed out when the game's button is.",
-			"Fixed: on the panel, a material you had enough of showed no tooltip. Every material row now shows its item on hover.",
 		},
 	},
 })

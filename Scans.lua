@@ -191,7 +191,13 @@ function Scans.Save(run)
 	local recipes = {}
 	for i, entry in ipairs(run.recipes) do recipes[i] = packRecipe(entry) end
 	me.scans = me.scans or {}
-	me.scans[run.professionID] = { format = FORMAT, time = time(), name = run.name, recipes = recipes }
+	me.scans[run.professionID] = {
+		format = FORMAT,
+		time = time(),
+		name = run.name,
+		baseProfessionID = run.baseProfessionID,
+		recipes = recipes,
+	}
 	tidied = false -- an older scan of the same profession under another number goes
 	version = version + 1
 	-- Craft myself can use the new recipes, and the list prices with them.
@@ -257,8 +263,45 @@ function Scans.Mine()
 	return list
 end
 
--- Every saved recipe of every character, except this character's `shownProfession`,
--- which the list has fresh from the game.
+-- This character's saved scan metadata, newest first:
+-- { professionID, baseProfessionID, name, time, count } ...
+function Scans.MyScans()
+	tidy()
+	local _, myKey = ns.Ranks.Me()
+	local character = myKey and CraftonomicsDB.characters[myKey]
+	local list = {}
+	for professionID, saved in pairs(character and character.scans or {}) do
+		if saved.format == FORMAT then
+			list[#list + 1] = {
+				professionID = professionID,
+				baseProfessionID = saved.baseProfessionID,
+				name = saved.name,
+				time = saved.time or 0,
+				count = saved.recipes and #saved.recipes or 0,
+			}
+		end
+	end
+	table.sort(list, function(a, b)
+		if a.time ~= b.time then return a.time > b.time end
+		return a.professionID < b.professionID
+	end)
+	return list
+end
+
+-- Unpacked entries for one of this character's saved scans, plus its saved table;
+-- nil when none is saved for `professionID`.
+function Scans.ForMe(professionID)
+	tidy()
+	if not professionID then return end
+	local _, myKey = ns.Ranks.Me()
+	local character = myKey and CraftonomicsDB.characters[myKey]
+	local saved = character and character.scans and character.scans[professionID]
+	if not (saved and saved.format == FORMAT) then return end
+	return entriesOf(saved, professionID, myKey), saved
+end
+
+-- Every saved recipe of every character, except this character's `shownProfession`
+-- (which may be nil when no profession window is open).
 function Scans.Entries(shownProfession)
 	tidy()
 	local list = {}

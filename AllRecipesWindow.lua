@@ -90,17 +90,22 @@ local function heatmapHow()
 				.. "for a tile of their own share one, and an item without at least 3 days of scans or current listings "
 				.. "is left out."))
 end
-local EXPANSION_WIDTH = 190 -- the expansion dropdown: room for "Wrath of the Lich King"
-local RANK_WIDTH = 250      -- the rank dropdown: room for "Lowest rank, cheapest materials"
+local EXPANSION_WIDTH = 185 -- the expansion dropdown: room for "Wrath of the Lich King"
+local RANK_WIDTH = 245      -- the rank dropdown: room for "Lowest rank, cheapest materials"
+local COLUMNS_BUTTON_WIDTH = 84
+local MAX_OPTIONAL_COLUMNS = 6 -- most selectable columns checked in the Columns menu (besides Item and Net Profit)
+local COLUMNS_BOX_WIDTH = 196
+local COLUMN_ROW_HEIGHT = 22
 
 local frame, scrollBox, footer, empty, searchBox, professionDropdown
 local expansionDropdown, rankDropdown -- Retail only
 local viewDropdown, heatmap -- the View dropdown, and the heatmap it switches to (made when first shown)
-local listParts = {}        -- what only shows with the list: its rows, scroll bar and the bar behind the column names
+local listParts = {}        -- what only shows with the list: its rows, scroll bar, bar behind headers, and Columns button
 -- The Filters button beside the search box and the box it opens, with what's in
 -- it: Only profitable, the lowest net profit's gold, silver and copper boxes, and
 -- the lowest and highest TSM sale rate.
-local filtersButton, filtersBox, profitableCheck, rateMinBox, rateMaxBox
+local filtersButton, columnsButton, filtersBox, columnsBox, columnsTitle, profitableCheck, rateMinBox, rateMaxBox
+local columnsChecks = {}
 local netBoxes = {}
 local rateParts = {}   -- the sale rate's line: its boxes and the texts around them (only with TSM)
 local filterBoxes = {} -- every number box, in the order Tab goes through them
@@ -152,14 +157,53 @@ local function soldText(row)
 	return sold and ns.Format.SoldPerDay(sold) or Color("muted", "-")
 end
 
+local function returnOf(row)
+	return ns.Format.ReturnShare(row.net, row.cost)
+end
+
+local function goldPerDayOf(row)
+	if not (row.net and row.net > 0 and row.soldPerDay and row.soldPerDay > 0) then return nil end
+	return (row.net / (row.made or 1)) * row.soldPerDay
+end
+
+local function dailyText(amount)
+	local gold = math.floor(math.abs(amount) / 10000 + 0.5)
+	if gold < 1 then return Color("profit", "+" .. Money(amount)) end
+	return Color("profit", "+" .. GetMoneyString(gold * 10000, true))
+end
+
+local function trendOf(row)
+	if not (row.market and row.historical and row.historical > 0) then return nil end
+	return math.floor((row.market - row.historical) * 100 / row.historical + 0.5)
+end
+
+local function listedOf(row)
+	if row.listed == nil and row.link and ns.Prices.Listed then
+		row.listed = ns.Prices.Listed(row.link) or false
+	end
+	return row.listed or nil
+end
+
+local function expectedDepositOf(row)
+	if row.expectedDeposit and row.expectedDeposit > 0 then return row.expectedDeposit end
+	if row.cachedExpectedDeposit == nil and row.itemID and ns.Prices.ExpectedDepositFee then
+		local fee = ns.Prices.ExpectedDepositFee(row.link, row.itemID, row.made)
+		row.cachedExpectedDeposit = fee ~= nil and fee or false
+	end
+	return row.cachedExpectedDeposit ~= false and row.cachedExpectedDeposit or nil
+end
+
 local function grossTip()
+	if ns.db.subtractExpectedDeposit or ns.db.vendorFloor ~= false then
+		return "What the items one craft makes sell for after enabled fees (or at vendor sell price if that pays more)."
+	end
 	return ns.db.ahCut
 		and format("What the items one craft makes sell for, after the %d%% auction house cut.", ns.AH_CUT * 100)
 		or "What the items one craft makes sell for."
 end
 
 local COLUMNS = {
-	{ key = "name", header = "Item", tip = "What the recipe makes, with how many when one craft makes more than one. "
+	{ key = "name", header = "Item", fixed = true, tip = "What the recipe makes, with how many when one craft makes more than one. "
 		.. "An enchant goes by its own name.",
 		sort = function(row) return row.name:lower() end, ascending = true },
 	{ key = "profession", header = "Profession", tip = "The profession the recipe belongs to.", width = 120,
@@ -169,13 +213,48 @@ local COLUMNS = {
 		tip = "The profession skill the recipe needs, in orange. The game only says that for recipes learned from "
 			.. "a recipe item (a pattern, plans, a schematic...).\n\nFor a recipe a trainer teaches, it's the skill where "
 			.. "the recipe turns yellow, in yellow: you can learn it by then, often a little sooner." },
+	{ key = "each", header = "Sale Each", width = 96, sort = "each", offByDefault = true,
+		tip = "What one of the item sells for on the auction house, before fees. Useful for recipes that make more than one item per craft.",
+		text = function(row) return moneyOrDash(row.each) end },
 	{ key = "cost", header = "Materials", width = 104, sort = "cost",
 		tip = "What the materials for one craft cost to buy: at a vendor when one sells them, otherwise on the "
 			.. "auction house. In red, since it's gold the craft takes from you. A dash when one of them has no price.",
 		text = costText },
 	{ key = "gross", header = "Gross Profit", width = 104, sort = "gross", tip = grossTip,
 		text = function(row) return moneyOrDash(row.gross) end },
-	{ key = "net", header = "Net Profit", width = 104, sort = "net", tip = "Gross Profit minus Materials.", text = netText },
+	{ key = "net", header = "Net Profit", fixed = true, width = 104, sort = "net",
+		tip = "Gross Profit minus Materials.", text = netText },
+	{ key = "returns", header = "Return", width = 64, sort = returnOf, offByDefault = true,
+		tip = "Net Profit as a share of Materials cost: +25% means every 100 gold of materials makes 25 gold.",
+		text = function(row)
+			local s = returnOf(row)
+			return s and ns.Format.Return(s) or Color("muted", "-")
+		end },
+	{ key = "goldPerDay", header = "Gold/day", width = 84, sort = goldPerDayOf, shown = ns.Prices.HasTSM, offByDefault = true,
+		tip = "Roughly what this recipe could make in a day: Net Profit per item times TSM Sold per Day. For comparing recipes, not a promise.",
+		text = function(row)
+			local d = goldPerDayOf(row)
+			return d and dailyText(d) or Color("muted", "-")
+		end },
+	{ key = "expectedDeposit", header = "Exp. Deposit", width = 96, sort = expectedDepositOf,
+		shown = ns.Prices.HasSaleRate, offByDefault = true,
+		tip = "Estimated auction house deposits lost across relistings per craft based on the item's sale rate and Expected deposit duration.",
+		text = function(row)
+			local d = expectedDepositOf(row)
+			return d and Money(d) or Color("muted", "-")
+		end },
+	{ key = "trend", header = "Trend", width = 64, sort = trendOf, shown = ns.Prices.HasTrend, offByDefault = true,
+		tip = "How far the item's market value is from its historical price: -20% means 20% below, +14% means 14% above.",
+		text = function(row)
+			local t = trendOf(row)
+			return t and ns.Format.Trend(t) or Color("muted", "-")
+		end },
+	{ key = "listed", header = "Listed", width = 58, sort = listedOf, offByDefault = true,
+		tip = "How many of this item were listed on the auction house in the last scan.",
+		text = function(row)
+			local n = listedOf(row)
+			return n and BreakUpLargeNumbers(n) or Color("muted", "-")
+		end },
 	{ key = "saleRate", width = 112, sort = "saleRate", shown = ns.Prices.HasSaleRate,
 		header = function() return ns.Prices.SaleRateSource() == "tsm" and "TSM Sale Rate" or "Your Sale Rate" end,
 		tip = function()
@@ -188,16 +267,71 @@ local COLUMNS = {
 		end,
 		text = function(row) return row.saleRate and ns.Format.SaleRate(row.saleRate) or Color("muted", "-") end },
 	{ key = "soldPerDay", header = "Sold per Day", width = 104, sort = "soldPerDay", shown = ns.Prices.HasTSM,
+		offByDefault = not ns.QUALITY_CRAFTING,
 		tip = "How many of this item sell in a day, on average, from TSM.", text = soldText },
 }
 
--- The columns that show: all of them with TSM, the ones that need no TSM without.
-local function shownColumns()
-	local list = {}
+local function savedColumns()
+	ns.db.recipesColumns = ns.db.recipesColumns or {}
+	return ns.db.recipesColumns
+end
+
+local function columnAvailable(column)
+	return not column.shown or column.shown()
+end
+
+local function columnChosen(column)
+	if column.fixed then return true end
+	local choice = savedColumns()[column.key]
+	if choice ~= nil then return choice end
+	return not column.offByDefault
+end
+
+local function optionalShownCount()
+	local count = 0
 	for _, column in ipairs(COLUMNS) do
-		if not column.shown or column.shown() then list[#list + 1] = column end
+		if not column.fixed and columnAvailable(column) and columnChosen(column) then
+			count = count + 1
+		end
+	end
+	return count
+end
+
+-- The columns that show right now (Item and Net Profit, plus up to MAX_OPTIONAL_COLUMNS).
+local function shownColumns()
+	local list, optionalLeft = {}, MAX_OPTIONAL_COLUMNS
+	for _, column in ipairs(COLUMNS) do
+		if columnAvailable(column) and columnChosen(column) then
+			if column.fixed then
+				list[#list + 1] = column
+			elseif optionalLeft > 0 then
+				list[#list + 1] = column
+				optionalLeft = optionalLeft - 1
+			end
+		end
 	end
 	return list
+end
+
+-- Trims any leftover saved selection past MAX_OPTIONAL_COLUMNS so menu checkboxes match what is shown.
+local function enforceMaxColumns()
+	local optionalLeft = MAX_OPTIONAL_COLUMNS
+	for _, column in ipairs(COLUMNS) do
+		if not column.fixed and columnAvailable(column) and columnChosen(column) then
+			if optionalLeft > 0 then
+				optionalLeft = optionalLeft - 1
+			else
+				savedColumns()[column.key] = column.offByDefault and nil or false
+			end
+		end
+	end
+end
+
+-- Returns the ordered keys of currently visible columns.
+function AllRecipesWindow.VisibleColumns()
+	local keys = {}
+	for _, column in ipairs(shownColumns()) do keys[#keys + 1] = column.key end
+	return keys
 end
 
 -- Where each column sits in a row `width` wide; the name takes what the others leave.
@@ -209,7 +343,7 @@ local function columnPlaces(width)
 		right = right - column.width - CELL_GAP
 	end
 	local nameX = 4 + ICON_SIZE + 6
-	places[1] = { x = nameX, width = right - nameX }
+	places[1] = { x = nameX, width = math.max(120, right - nameX) }
 	return places
 end
 
@@ -343,10 +477,22 @@ local function showRowTooltip(button)
 		GameTooltip:Show()
 		return
 	end
-	addPair(row.made == 1 and "Sells for" or format("Sells for (%s x %s)", tostring(row.made), Money(row.each)),
-		Money(row.each * row.made))
-	if ns.db.ahCut then
-		addPair(format("Auction house cut (%d%%)", ns.AH_CUT * 100), Money(row.gross - row.each * row.made))
+	if row.soldToVendor then
+		addPair(row.made == 1 and "Sells for (vendor)" or format("Sells for (vendor, %sx)", tostring(row.made)),
+			Money(row.gross))
+		addPair(Color("muted", "Auction house (after fees)"), Color("muted", Money(row.ahNet)))
+	else
+		addPair(row.made == 1 and "Sells for" or format("Sells for (%s x %s)", tostring(row.made), Money(row.each)),
+			Money(row.each * row.made))
+		if row.ahCut and row.ahCut > 0 then
+			addPair(format("Auction house cut (%d%%)", ns.AH_CUT * 100), Money(-row.ahCut))
+		elseif not row.ahCut and ns.db.ahCut then
+			addPair(format("Auction house cut (%d%%)", ns.AH_CUT * 100), Money(row.gross - row.each * row.made))
+		end
+		if row.expectedDeposit and row.expectedDeposit > 0 then
+			addPair(format("Expected AH deposit (%s)", ns.AUCTION_DURATIONS[row.depositDuration] or ""),
+				Money(-row.expectedDeposit))
+		end
 	end
 	addPair("Gross Profit", Money(row.gross))
 	addPair("Net Profit", netText(row))
@@ -419,11 +565,126 @@ local function showHeaderTip(header)
 	GameTooltip:AddLine(type(column.tip) == "function" and column.tip() or column.tip, 1, 1, 1, true)
 	GameTooltip:AddLine("Click to sort; click again to reverse.", 0.6, 0.6, 0.6)
 	GameTooltip:AddLine(format("Shift-click: sort by this next, up to %d columns", MAX_SORTS), 0.6, 0.6, 0.6)
+	GameTooltip:AddLine("Right-click: pick the columns", 0.6, 0.6, 0.6)
 	GameTooltip:Show()
+end
+
+local function refreshColumnsBox()
+	if not columnsBox then return end
+	enforceMaxColumns()
+	local count = optionalShownCount()
+	local atLimit = count >= MAX_OPTIONAL_COLUMNS
+	columnsTitle:SetText(format("Columns (%d/%d)", count, MAX_OPTIONAL_COLUMNS))
+	local rowIndex = 0
+	for _, column in ipairs(COLUMNS) do
+		if not column.fixed and columnAvailable(column) then
+			rowIndex = rowIndex + 1
+			local check = columnsChecks[rowIndex]
+			if not check then
+				check = CreateFrame("CheckButton", nil, columnsBox, "UICheckButtonTemplate")
+				check:SetSize(CHECK_SIZE, CHECK_SIZE)
+				if check.SetMotionScriptsWhileDisabled then check:SetMotionScriptsWhileDisabled(true) end
+				check.label = columnsBox:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+				check.label:SetPoint("LEFT", check, "RIGHT", 2, 0)
+				check:SetScript("OnClick", function(self)
+					local col = self.column
+					if not col then return end
+					local want = self:GetChecked() == true
+					if want and optionalShownCount() >= MAX_OPTIONAL_COLUMNS then
+						self:SetChecked(false)
+						refreshColumnsBox()
+						return
+					end
+					if want == not col.offByDefault then want = nil end
+					savedColumns()[col.key] = want
+					AllRecipesWindow.Render()
+					refreshColumnsBox()
+				end)
+				check:SetScript("OnEnter", function(self)
+					local col = self.column
+					if not col then return end
+					local tipTitle = type(col.header) == "function" and col.header() or col.header
+					local tipText = type(col.tip) == "function" and col.tip() or col.tip
+					GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+					GameTooltip:SetText(tipTitle)
+					GameTooltip:AddLine(tipText or "", 1, 1, 1, true)
+					if not columnChosen(col) and optionalShownCount() >= MAX_OPTIONAL_COLUMNS then
+						GameTooltip:AddLine(format("Maximum %d columns selected. Uncheck another column first.",
+							MAX_OPTIONAL_COLUMNS), 0.6, 0.6, 0.6, true)
+					end
+					GameTooltip:Show()
+				end)
+				check:SetScript("OnLeave", GameTooltip_Hide)
+				columnsChecks[rowIndex] = check
+			end
+			local title = type(column.header) == "function" and column.header() or column.header
+			local isOn = columnChosen(column)
+			local enabled = isOn or not atLimit
+			check.column = column
+			check:ClearAllPoints()
+			check:SetPoint("TOPLEFT", FILTERS_PAD - 4, -FILTERS_PAD - 20 - (rowIndex - 1) * COLUMN_ROW_HEIGHT)
+			check:SetChecked(isOn)
+			check:SetEnabled(enabled)
+			check.label:SetText(title)
+			if enabled then
+				check.label:SetTextColor(1, 1, 1)
+			else
+				check.label:SetTextColor(0.5, 0.5, 0.5)
+			end
+			check:SetHitRectInsets(0, -(math.max(check.label:GetStringWidth(), 100) + 4), 0, 0)
+			check:Show()
+			check.label:Show()
+		end
+	end
+	for i = rowIndex + 1, #columnsChecks do
+		columnsChecks[i]:Hide()
+		columnsChecks[i].label:Hide()
+	end
+	columnsBox:SetHeight(FILTERS_PAD + 22 + rowIndex * COLUMN_ROW_HEIGHT + 10 + 22 + FILTERS_PAD)
+end
+
+local function createColumnsBox()
+	columnsBox = CreateFrame("Frame", nil, frame, "BackdropTemplate")
+	columnsBox:SetSize(COLUMNS_BOX_WIDTH, 200)
+	columnsBox:SetFrameStrata("DIALOG")
+	columnsBox:SetBackdrop(FILTERS_BACKDROP)
+	columnsBox:SetBackdropColor(0.05, 0.05, 0.05, 0.97)
+	columnsBox:SetBackdropBorderColor(0.6, 0.6, 0.6, 1)
+	columnsBox:EnableMouse(true)
+	columnsBox:Hide()
+
+	columnsTitle = columnsBox:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+	columnsTitle:SetPoint("TOPLEFT", FILTERS_PAD, -FILTERS_PAD + 2)
+
+	local reset = CreateFrame("Button", nil, columnsBox, "UIPanelButtonTemplate")
+	reset:SetSize(124, 22)
+	reset:SetPoint("BOTTOM", 0, 10)
+	reset:SetText("Default columns")
+	reset:SetScript("OnClick", function()
+		wipe(savedColumns())
+		AllRecipesWindow.Render()
+		refreshColumnsBox()
+	end)
+end
+
+local function openColumnsMenu(owner, toggle)
+	GameTooltip:Hide()
+	if not columnsBox then createColumnsBox() end
+	if toggle and columnsBox:IsShown() and columnsBox.owner == owner then
+		columnsBox:Hide()
+		return
+	end
+	if filtersBox then filtersBox:Hide() end
+	columnsBox.owner = owner
+	columnsBox:ClearAllPoints()
+	columnsBox:SetPoint("TOPLEFT", owner, "BOTTOMLEFT", 0, -2)
+	refreshColumnsBox()
+	columnsBox:Show()
 end
 
 local function createHeader()
 	local header = CreateFrame("Button", nil, frame)
+	header:RegisterForClicks("LeftButtonUp", "RightButtonUp")
 	header.text = header:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
 	header.text:SetAllPoints()
 	header.arrow = header:CreateTexture(nil, "OVERLAY")
@@ -433,7 +694,9 @@ local function createHeader()
 	else
 		header.arrow:SetTexture(SORT_ARROW_FILE)
 	end
-	header:SetScript("OnClick", function(self)
+	header:SetScript("OnClick", function(self, mouseButton)
+		if mouseButton == "RightButton" then return openColumnsMenu(self, true) end
+		if columnsBox then columnsBox:Hide() end
 		if self.column then setSort(self.column, IsShiftKeyDown()) end
 	end)
 	header:SetScript("OnEnter", showHeaderTip)
@@ -585,14 +848,17 @@ end
 function AllRecipesWindow.Render()
 	refreshQueued = false
 	if not (frame and frame:IsShown()) then return end
+	enforceMaxColumns()
 	local view = currentView()
 	local listed = view == "list"
 	for _, part in ipairs(listParts) do part:SetShown(listed) end
 	columns = shownColumns()
 	if listed then
 		drawHeaders()
+		if columnsBox and columnsBox:IsShown() then refreshColumnsBox() end
 	else
 		for _, header in ipairs(headers) do header:Hide() end
+		if columnsBox then columnsBox:Hide() end
 	end
 	viewDropdown:GenerateMenu()
 	professionDropdown:GenerateMenu()
@@ -886,7 +1152,24 @@ local function createFilters()
 	filtersButton = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
 	filtersButton:SetSize(FILTERS_BUTTON_WIDTH, 22)
 	filtersButton:SetPoint("LEFT", searchBox, "RIGHT", 12, 0)
-	filtersButton:SetScript("OnClick", function() filtersBox:SetShown(not filtersBox:IsShown()) end)
+	filtersButton:SetScript("OnClick", function()
+		if columnsBox then columnsBox:Hide() end
+		filtersBox:SetShown(not filtersBox:IsShown())
+	end)
+
+	columnsButton = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
+	columnsButton:SetSize(COLUMNS_BUTTON_WIDTH, 22)
+	columnsButton:SetPoint("LEFT", filtersButton, "RIGHT", 6, 0)
+	columnsButton:SetText("Columns")
+	columnsButton:SetScript("OnClick", function(self) openColumnsMenu(self, true) end)
+	columnsButton:SetScript("OnEnter", function(self)
+		GameTooltip:SetOwner(self, "ANCHOR_TOP")
+		GameTooltip:SetText("Columns")
+		GameTooltip:AddLine(format("Choose up to %d extra columns to show alongside Item and Net Profit. You can also right-click any column header.",
+			MAX_OPTIONAL_COLUMNS), 1, 1, 1, true)
+		GameTooltip:Show()
+	end)
+	columnsButton:SetScript("OnLeave", GameTooltip_Hide)
 
 	filtersBox = CreateFrame("Frame", nil, frame, "BackdropTemplate")
 	filtersBox:SetSize(FILTERS_WIDTH, FILTERS_HEIGHT)
@@ -933,7 +1216,7 @@ local function createList()
 	headerBar:SetPoint("BOTTOMRIGHT", scrollBox, "TOPRIGHT", 0, 0)
 	headerBar:SetHeight(HEADER_HEIGHT)
 	headerBar:SetColorTexture(0, 0, 0, 0.5)
-	listParts = { scrollBox, scrollBar, headerBar }
+	listParts = { scrollBox, scrollBar, headerBar, columnsButton }
 
 	empty = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
 	empty:SetPoint("CENTER", scrollBox, "CENTER")
@@ -961,7 +1244,7 @@ local function create()
 	frame.Inset:SetPoint("BOTTOMRIGHT", -(SIDE - 4), 32)
 
 	searchBox = CreateFrame("EditBox", nil, frame, "SearchBoxTemplate")
-	searchBox:SetSize(220, 20)
+	searchBox:SetSize(175, 20)
 	searchBox:SetPoint("TOPLEFT", SIDE + 6, -(FILTERS_TOP + 2))
 	searchBox:SetAutoFocus(false)
 	-- The template's own fonts are smaller than the rest of the window's text.
@@ -973,7 +1256,7 @@ local function create()
 	searchBox:HookScript("OnTextChanged", refresh)
 
 	professionDropdown = CreateFrame("DropdownButton", nil, frame, "WowStyle1DropdownTemplate")
-	professionDropdown:SetWidth(170)
+	professionDropdown:SetWidth(160)
 	professionDropdown:SetPoint("TOPRIGHT", -SIDE, -FILTERS_TOP)
 	professionDropdown:SetupMenu(professionMenu)
 	if ns.QUALITY_CRAFTING then createRetailDropdowns() end
@@ -1006,6 +1289,7 @@ local function create()
 	frame:SetScript("OnHide", function()
 		if frame:IsShown() then return end
 		filtersBox:Hide()
+		if columnsBox then columnsBox:Hide() end
 		ns.Heatmap.Hide()
 		ns.AllRecipes.Release()
 		scrollBox:SetDataProvider(CreateDataProvider({}))

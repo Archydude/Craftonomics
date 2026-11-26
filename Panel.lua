@@ -1372,9 +1372,10 @@ local LOW_SALE_RATE = 0.60
 local function drawDeposit(model, marketRow)
 	local output = model.output
 	local profit = (model.procs and model.procs.total > 0 and model.expected or model.total or 0) * count
-	if not (output and output.itemID and output.sale) or profit <= 0 then return end
+	if not (output and output.itemID and output.sale) or output.soldToVendor or profit <= 0 then return end
 	local durations = ns.AUCTION_DURATIONS
-	local duration = durations[ns.db.sellDuration] and ns.db.sellDuration or #durations
+	local duration = ns.Prices.DepositDuration and ns.Prices.DepositDuration()
+		or (durations[ns.db.sellDuration] and ns.db.sellDuration or #durations)
 	local qty = math.max(math.floor(output.made * count + 0.5), 1)
 	local deposit = ns.Prices.Deposit(output.itemID, duration, qty)
 	if not deposit or deposit < HIGH_DEPOSIT * profit then return end
@@ -1414,9 +1415,10 @@ end
 local function drawExpectedDeposit(model, marketRow)
 	if not ns.db.panelExpectedDeposit then return end
 	local output = model.output
-	if not (output and output.itemID and output.sale) then return end
+	if not (output and output.itemID and output.sale) or output.soldToVendor then return end
 	local durations = ns.AUCTION_DURATIONS
-	local duration = durations[ns.db.sellDuration] and ns.db.sellDuration or #durations
+	local duration = ns.Prices.DepositDuration and ns.Prices.DepositDuration()
+		or (durations[ns.db.sellDuration] and ns.db.sellDuration or #durations)
 	local qty = math.max(math.floor(output.made * count + 0.5), 1)
 	local deposit = ns.Prices.Deposit(output.itemID, duration, qty)
 	if not deposit then return end
@@ -1454,7 +1456,11 @@ local function drawExpectedDeposit(model, marketRow)
 		end
 		if model.total then
 			tip:AddLine(" ")
-			tip:AddDoubleLine("Profit after expected deposit", signedMoney(profit - expected), 1, 1, 1, 1, 1, 1)
+			if ns.db.subtractExpectedDeposit and output.expectedDeposit and output.expectedDeposit > 0 then
+				tip:AddLine("Already subtracted from profit.", 0.53, 0.53, 0.53, true)
+			else
+				tip:AddDoubleLine("Profit after expected deposit", signedMoney(profit - expected), 1, 1, 1, 1, 1, 1)
+			end
 		end
 	end)
 end
@@ -1471,7 +1477,7 @@ local function drawDisenchant(model)
 	if not each then return end
 	local value = each * output.made
 	local net = value - (model.cost or 0)
-	local selling = output.sale and (output.sale - (output.ahCut or 0))
+	local selling = output.net or (output.sale and (output.sale - (output.ahCut or 0) - (output.expectedDeposit or 0)))
 	local better = selling and value - selling
 	local function tooltip(tip)
 		tip:SetText("Disenchant value")
@@ -1511,7 +1517,7 @@ local function drawSkillup(model)
 	-- An enchant makes nothing to sell: its skill point costs the materials.
 	local output = model.output
 	if not (ns.SKILLUPS and model.recipeID and model.kind == "craft") then return end
-	local sale = output and output.sale and (output.sale - (output.ahCut or 0))
+	local sale = output and (output.net or (output.sale and (output.sale - (output.ahCut or 0) - (output.expectedDeposit or 0))))
 	local cost, chance, color = ns.Skillups.Cost(model.recipeID, model.cost or 0, sale,
 		output and output.itemID, output and output.made)
 	if not color or color == "grey" or not (chance and chance > 0) then return end
@@ -1545,6 +1551,44 @@ local function drawMarket(model, disenchantDetails)
 	if disenchantDetails then disenchantDetails(marketRow) end
 end
 
+local function saleProceedsLabel(output)
+	if output.soldToVendor then return "Sale proceeds " .. Color("muted", "(vendor)") end
+	if output.ahCut and output.expectedDeposit then
+		return "Sale proceeds " .. Color("muted", format("(after %d%% AH cut + deposit)", ns.AH_CUT * 100))
+	end
+	if output.ahCut then return "Sale proceeds" .. cutNote(output.ahCut, output.sale, "AH cut") end
+	if output.expectedDeposit then return "Sale proceeds " .. Color("muted", "(after deposit)") end
+	return "Sale proceeds"
+end
+
+local function saleProceedsTooltip(output)
+	local info = output.saleInfo
+	if not info or (not info.soldToVendor and (info.rawAhCut or 0) <= 0 and (info.rawExpectedDeposit or 0) <= 0) then return end
+	return function(tip)
+		tip:SetText("Sale proceeds")
+		tip:AddDoubleLine("Auction house price", Money(output.sale * count), 1, 1, 1, 1, 1, 1)
+		if info.rawAhCut and info.rawAhCut > 0 then
+			tip:AddDoubleLine(format("Auction house cut (%d%%)", ns.AH_CUT * 100),
+				Money(-info.rawAhCut * count), 1, 1, 1, 1, 1, 1)
+		end
+		if info.rawExpectedDeposit and info.rawExpectedDeposit > 0 then
+			local durText = ns.AUCTION_DURATIONS[info.duration] or ""
+			local rateText = info.saleRate and format(", %.0f%%", info.saleRate * 100) or ""
+			tip:AddDoubleLine(format("Expected AH deposit (%s%s)", durText, rateText),
+				Money(-info.rawExpectedDeposit * count), 1, 1, 1, 1, 1, 1)
+		end
+		if info.soldToVendor then
+			tip:AddDoubleLine("AH proceeds after fees", Money(info.ahNet * count), 0.53, 0.53, 0.53, 0.53, 0.53, 0.53)
+			tip:AddDoubleLine("Vendor sell price", Money(info.vendorProceeds * count), 1, 1, 1, 1, 1, 1)
+			tip:AddLine(" ")
+			tip:AddLine("Vendor pays more than selling on the auction house after fees, so the vendor price is used with no AH fees.",
+				0.53, 0.53, 0.53, true)
+		elseif info.vendorProceeds then
+			tip:AddDoubleLine("Vendor sell price", Money(info.vendorProceeds * count), 0.53, 0.53, 0.53, 0.53, 0.53, 0.53)
+		end
+	end
+end
+
 local function drawCraft(model)
 	local output = model.output
 	drawHeader(model, output and format("Makes %sx %s", output.qtyText, output.link), output and output.link)
@@ -1554,21 +1598,26 @@ local function drawCraft(model)
 	if output then
 		addGap()
 		if output.sale then
-			addRow("Sale proceeds" .. cutNote(output.ahCut, output.sale, "AH cut"),
-				Money((output.sale - (output.ahCut or 0)) * count))
+			local net = output.net or (output.sale - (output.ahCut or 0) - (output.expectedDeposit or 0))
+			addRow(saleProceedsLabel(output), Money(net * count), nil, nop, saleProceedsTooltip(output))
 		else
 			addRow("Sale proceeds", Color("warning", "no price"))
 		end
 	end
 	if #model.materials > 0 then addRow("Material cost", Money(-model.cost * count)) end
 	if output then
-		local breakEven, breakEvenProcs = ns.Model.BreakEven(model.cost, output.made, ns.db.ahCut, model.procs)
+		local breakEvenDeposit = ns.db.subtractExpectedDeposit and output.saleInfo and output.saleInfo.rawExpectedDeposit or nil
+		local breakEven, breakEvenProcs = ns.Model.BreakEven(model.cost, output.made, ns.db.ahCut, model.procs, breakEvenDeposit)
 		if breakEven then
 			local shown = breakEvenProcs or breakEven
+			local feeNote = (ns.db.ahCut and breakEvenDeposit and breakEvenDeposit > 0)
+				and " after the 5% auction house cut and expected deposit"
+				or (ns.db.ahCut and " after the 5% auction house cut"
+				or (breakEvenDeposit and breakEvenDeposit > 0 and " after expected deposit" or ""))
 			addRow(Color("muted", "Break-even price"), Color("muted", Money(shown)), nil, nop, function(tip)
 				tip:SetText("Break-even price")
-				tip:AddLine(format("The lowest auction house price for one item that doesn't lose gold%s.",
-					ns.db.ahCut and " after the 5% auction house cut" or ""), 1, 1, 1, true)
+				tip:AddLine(format("The lowest auction house price for one item that doesn't lose gold%s.", feeNote),
+					1, 1, 1, true)
 				if breakEvenProcs then
 					tip:AddLine(" ")
 					tip:AddDoubleLine("With average procs", Money(breakEvenProcs), 1, 1, 1, 1, 1, 1)

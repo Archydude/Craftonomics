@@ -377,14 +377,25 @@ end
 
 -- What a craft at each rank sells for: `sales` (rank -> the item's price) capped
 -- at what better ranks sell for (see Prices.CapRanks), times the average amount
--- a craft makes, after the AH cut. Also rank -> the rank that set a cap.
-function Planner.RankPrices(sales, maxRank, schematic)
+-- a craft makes, after the AH cut, expected deposit (when enabled), and vendor
+-- floor (when `outputs` has rank -> { link, itemID }). Also rank -> the rank
+-- that set a cap, and rank -> NetProceeds details.
+function Planner.RankPrices(sales, maxRank, schematic, outputs)
 	local capped, cappedBy = ns.Prices.CapRanks(sales, maxRank)
 	local qtyMin, qtyMax = schematic.quantityMin or 1, schematic.quantityMax or 1
+	local made = (qtyMin + qtyMax) / 2
 	local keep = ns.db.ahCut and (1 - ns.AH_CUT) or 1
-	local perCraft = {}
-	for rank, price in pairs(capped) do perCraft[rank] = price * (qtyMin + qtyMax) / 2 * keep end
-	return perCraft, cappedBy
+	local perCraft, details = {}, {}
+	for rank, price in pairs(capped) do
+		local out = outputs and outputs[rank]
+		if out and ns.Prices.NetProceeds then
+			local net, info = ns.Prices.NetProceeds(out.link, out.itemID, price, made)
+			perCraft[rank], details[rank] = net, info
+		else
+			perCraft[rank] = price * made * keep
+		end
+	end
+	return perCraft, cappedBy, details
 end
 
 -- Picking one of `options` ({ cost, quality } each, cost being what its materials
