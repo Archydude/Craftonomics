@@ -867,9 +867,10 @@ local function priceEntry(entry)
 	if ns.SKILLUPS and entry.character == nil then
 		local schematic = entry.schematic
 		local made = ((schematic.quantityMin or 1) + (schematic.quantityMax or 1)) / 2
-		local cost, chance, color = ns.Skillups.Cost(entry.recipeID, row.cost or 0, row.sale,
+		local cost, chance, color, points = ns.Skillups.Cost(entry.recipeID, row.cost or 0, row.sale,
 			row.output and row.output.itemID, made)
-		if color then row.skillup = { cost = cost, chance = chance, color = color } end
+		local rawCost = (chance and chance > 0) and ((row.cost or 0) / (chance * (points or 1))) or nil
+		if color then row.skillup = { cost = cost, rawCost = rawCost, chance = chance, color = color, points = points } end
 	end
 	return row
 end

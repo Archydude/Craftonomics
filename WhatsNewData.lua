@@ -2,10 +2,13 @@
 ArchdudeWhatsNew:Register("Craftonomics", {
 	title = "Craftonomics",
 	icon = "Interface\\Icons\\INV_Hammer_20",
-	version = "5.19.0",
+	version = "5.20.0",
 	seen = "CraftonomicsWhatsNew",
 	saved = { "CraftonomicsDB", "CraftonomicsCharDB" },
 	changes = {
+		{ "5.20.0",
+			"|cffffd100Recipe list Profit / Cost / Skill-up toggle:|r switch what shows on the right of each row in Blizzard's profession recipe list using the new |cffffd100List: Profit|r button at the top left of the profession window (or |cffffd100Recipe list shows|r in Options). Left-click cycles between |cffffd100Profit|r and |cffffd100Crafting cost|r on Retail — and |cffffd100Profit|r, |cffffd100Crafting cost|r, |cffffd100Net skill-up cost|r, and |cffffd100Raw skill-up cost|r on WoW Forever (right-click to pick directly). Helpful while leveling a profession, including enchants and recipes with no auction price.",
+		},
 		{ "5.19.0",
 			"|cffffd100Vendor price floor for sale proceeds:|r when an item's vendor sell value pays more than its net auction house proceeds (after enabled fees), Craftonomics now uses the vendor sell price with no auction house fees instead. Items with no auction house price continue to show as unpriced rather than falling back to vendor price. On by default; toggle with |cffffd100Use vendor price as minimum sale price|r on the Prices options page.",
 			"|cffffd100Subtract expected AH deposit as a fee (optional):|r turn on |cffffd100Subtract expected AH deposit|r on the Prices options page (off by default) to deduct expected lost auction house deposits across relistings right alongside the 5% auction house cut across the panel, break-even price, Best crafts, All recipes, Recipe Profit tooltips, and Craft vs AH tooltips. Pick which duration to estimate with |cffffd100Expected deposit duration|r (|cffffd100Sell tab's duration|r, or |cffffd10012h|r / |cffffd10024h|r / |cffffd10048h|r on Retail and |cffffd1002h|r / |cffffd1008h|r / |cffffd10024h|r on WoW Forever).",
@@ -52,10 +55,6 @@ ArchdudeWhatsNew:Register("Craftonomics", {
 		{ "5.12.2",
 			"|cffffd100Lowest vs market follows Freshest prices:|r with |cffffd100Freshest prices|r as your Price addon, the tooltip's lowest vs market line now compares the newest lowest price known with TSM's market value: TSM's, a scan's, or one you just looked up at the auction house. When that price comes from a scan and not from TSM, the line is called |cffffd100Lowest vs TSM Market|r.",
 			"|cffffd100My auctions: rows you can read.|r The grey line under each auction was cut off. Each row now has your price on one line, and under it what others ask and how many come before yours.",
-		},
-		{ "5.12.1",
-			"|cffffd100Ledger: On the auction house.|r The second total, Waiting to sell, is now |cffffd100On the auction house|r: only what you posted and hasn't sold, for what you posted it for after the cut. What you still have and haven't posted is |cffffd100Not posted|r. The bar splits into Sold, Posted, Not posted, Used and Gone, each row has a |cffffd100Posted|r column, and an item's status says |cffffd100On the auction house|r or |cffffd100Not posted|r. An auction counts until it sells, you cancel it or its time is over. Auctions from before this version count as up for the longest posting time, so the first day can be off.",
-			"|cffffd100Ledger: totals that add up.|r Profit so far, On the auction house and If it all sells now count the same crafts: the ones with a materials cost on record. |cffffd100If it all sells|r is the profit so far plus what the posted items would make. Hover a total for its sum line by line. Crafts with no cost on record are left out of the totals; the footer says how many, and the tooltips what they sold for and what's left of them.",
 		},
 	},
 })

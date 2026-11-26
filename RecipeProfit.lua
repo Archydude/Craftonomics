@@ -16,8 +16,11 @@ local MIN_NAME_WIDTH = 60 -- a row whose name would get narrower than this shows
 local REFRESH_DELAY = 0.3 -- redraws are batched this long
 local SCAN_DELAY = 0.3    -- a profession that just showed is scanned after this long
 local GOLD = 10000        -- copper
+local TOGGLE_WIDTH, TOGGLE_HEIGHT = 86, 20
+local TOGGLE_X, TOGGLE_Y = 66, -1 -- top-left of the profession window title bar, right of the portrait
 
 local scrollBox       -- the game's recipe list
+local toggle          -- top-bar button toggling Profit vs Crafting cost on the recipe list
 local texts = {}      -- recipe row (the game's frame) -> our text on it
 local narrowed = {}   -- rows whose name we made room next to
 local refreshQueued, scanQueued, pendingMissing = false, false, nil
@@ -27,9 +30,49 @@ local function enabled()
 	return ns.db.listProfit
 end
 
--- Whether the profits can show now: your own profession's recipe list.
+local METRIC_INFO = {
+	profit = {
+		button = "List: Profit",
+		label = "Profit",
+		tip = "Showing craft profit on each recipe row.",
+	},
+	cost = {
+		button = "List: Cost",
+		label = "Crafting cost",
+		tip = "Showing material crafting cost per craft on each recipe row.",
+	},
+	skillup = {
+		button = "List: Net skill-up",
+		label = "Net skill-up cost",
+		tip = "Showing average net gold cost per skill point (materials minus resale or vendor value, divided by skill-up chance). Grey recipes are left blank.",
+	},
+	rawSkillup = {
+		button = "List: Raw skill-up",
+		label = "Raw skill-up cost",
+		tip = "Showing average raw material cost per skill point (materials divided by skill-up chance, ignoring resale value). Grey recipes are left blank.",
+	},
+}
+
+local function availableMetrics()
+	if ns.SKILLUPS then return { "profit", "cost", "skillup", "rawSkillup" } end
+	return { "profit", "cost" }
+end
+
+local function metric()
+	local saved = ns.db.listMetric
+	if saved == "cost" then return "cost" end
+	if ns.SKILLUPS and (saved == "skillup" or saved == "rawSkillup") then return saved end
+	return "profit"
+end
+
+-- Whether the profits/costs can show now: your own profession's recipe list.
 local function wanted()
 	return enabled() and scrollBox ~= nil and scrollBox:IsVisible() and ns.Blizzard.IsOwnProfession()
+end
+
+local function formatAmount(amount)
+	if ns.QUALITY_CRAFTING and math.abs(amount) >= GOLD then amount = math.floor(amount / GOLD + 0.5) * GOLD end
+	return Money(amount)
 end
 
 -- The profit as a row shows it: in whole gold from 1 gold up where prices are
@@ -38,10 +81,54 @@ end
 local function profitText(row)
 	local profit = ns.db.countProcs and row.expected or row.profit
 	if not profit then return end
-	if ns.QUALITY_CRAFTING and math.abs(profit) >= GOLD then profit = math.floor(profit / GOLD + 0.5) * GOLD end
-	local text = (profit > 0 and "+" or "") .. Money(profit)
+	local text = (profit > 0 and "+" or "") .. formatAmount(profit)
 	if row.unpriced > 0 then return Color("muted", text .. "?") end
 	return Color(ns.AmountColor(profit), text)
+end
+
+-- What the materials for one craft cost, in white (or grey with "?" when any
+-- material has no price). Shows for recipes without a sale price too.
+local function costText(row)
+	local cost = row.cost
+	if not cost then return end
+	if (row.unpriced or 0) > 0 then
+		return Color("muted", cost > 0 and (formatAmount(cost) .. "?") or "?")
+	end
+	if cost <= 0 then return end
+	return formatAmount(cost)
+end
+
+-- Average net gold cost per skill point on WoW Forever: green "Free" when
+-- selling/vendoring covers the craft, red loss otherwise. Blank for grey recipes.
+local function skillupText(row)
+	local s = row.skillup
+	if not (s and s.cost) then return end
+	if (row.unpriced or 0) > 0 then
+		if s.cost <= 0 then return Color("muted", "Free?") end
+		return Color("muted", formatAmount(-s.cost) .. "?")
+	end
+	if s.cost <= 0 then return Color("good", "Free") end
+	return Color("loss", formatAmount(-s.cost))
+end
+
+-- Average raw material cost per skill point on WoW Forever (materials / chance),
+-- ignoring resale value. Blank for grey recipes or free materials.
+local function rawSkillupText(row)
+	local s = row.skillup
+	if not (s and s.rawCost) then return end
+	if (row.unpriced or 0) > 0 then
+		return Color("muted", s.rawCost > 0 and (formatAmount(s.rawCost) .. "?") or "?")
+	end
+	if s.rawCost <= 0 then return end
+	return formatAmount(s.rawCost)
+end
+
+local function rowText(row)
+	local m = metric()
+	if m == "cost" then return costText(row) end
+	if m == "skillup" then return skillupText(row) end
+	if m == "rawSkillup" then return rawSkillupText(row) end
+	return profitText(row)
 end
 
 -- Sets how wide a row's name is, as the game does when it fills the row in, with
@@ -115,7 +202,7 @@ local function drawRow(frame)
 		scanSoon(info.recipeID)
 		return clearRow(frame)
 	end
-	local shown = profitText(row)
+	local shown = rowText(row)
 	if not shown then return clearRow(frame) end
 	local text = textOn(frame)
 	text:SetText(shown)
@@ -127,8 +214,98 @@ local function drawRow(frame)
 	text:Show()
 end
 
+local function nextMetric(current)
+	local list = availableMetrics()
+	for i, key in ipairs(list) do
+		if key == current then return list[(i % #list) + 1] end
+	end
+	return list[1]
+end
+
+local function updateToggle()
+	if not toggle then return end
+	local info = METRIC_INFO[metric()]
+	toggle:SetText(info.button)
+	if toggle.SetWidth then
+		local width = math.max(TOGGLE_WIDTH, (toggle.GetTextWidth and toggle:GetTextWidth() or 0) + 22)
+		toggle:SetWidth(width)
+	end
+	toggle:SetShown(wanted())
+end
+
+local function showToggleTooltip(self)
+	if not GameTooltip then return end
+	GameTooltip:SetOwner(self, "ANCHOR_TOP")
+	local current = metric()
+	local info = METRIC_INFO[current]
+	local nextInfo = METRIC_INFO[nextMetric(current)]
+	local list = availableMetrics()
+	GameTooltip:SetText("Recipe list: " .. info.label)
+	local hint = info.tip .. "\n\nLeft-click: switch to " .. nextInfo.label .. "."
+	if #list > 2 then hint = hint .. "\nRight-click: pick directly." end
+	GameTooltip:AddLine(hint, 1, 1, 1, true)
+	GameTooltip:Show()
+end
+
+function RecipeProfit.SetMetric(mode)
+	local valid = false
+	for _, key in ipairs(availableMetrics()) do
+		if key == mode then valid = true; break end
+	end
+	if not valid then mode = "profit" end
+	if ns.Options and ns.Options.Set then
+		ns.Options.Set("listMetric", mode)
+	else
+		ns.db.listMetric = mode
+	end
+	updateToggle()
+	RecipeProfit.Render()
+	if toggle and GameTooltip and GameTooltip.IsOwned and GameTooltip:IsOwned(toggle) then
+		showToggleTooltip(toggle)
+	end
+end
+
+function RecipeProfit.ToggleMetric()
+	RecipeProfit.SetMetric(nextMetric(metric()))
+end
+
+local function openToggleMenu(owner)
+	if not (MenuUtil and MenuUtil.CreateContextMenu) then return false end
+	MenuUtil.CreateContextMenu(owner, function(_, root)
+		for _, key in ipairs(availableMetrics()) do
+			local target = key
+			root:CreateRadio(METRIC_INFO[target].label, function() return metric() == target end, function()
+				RecipeProfit.SetMetric(target)
+			end)
+		end
+	end)
+	return true
+end
+
+function RecipeProfit.ToggleButton()
+	return toggle
+end
+
+local function createToggle()
+	if toggle or not (ProfessionsFrame and CreateFrame) then return end
+	toggle = CreateFrame("Button", nil, ProfessionsFrame, "UIPanelButtonTemplate")
+	toggle:SetSize(TOGGLE_WIDTH, TOGGLE_HEIGHT)
+	toggle:SetPoint("TOPLEFT", ProfessionsFrame, "TOPLEFT", TOGGLE_X, TOGGLE_Y)
+	local close = ProfessionsFrame.CloseButton
+	if close and close.GetFrameLevel then toggle:SetFrameLevel(close:GetFrameLevel()) end
+	if toggle.RegisterForClicks then toggle:RegisterForClicks("LeftButtonUp", "RightButtonUp") end
+	toggle:SetScript("OnClick", function(self, button)
+		if button == "RightButton" and openToggleMenu(self) then return end
+		RecipeProfit.ToggleMetric()
+	end)
+	toggle:SetScript("OnEnter", showToggleTooltip)
+	toggle:SetScript("OnLeave", GameTooltip_Hide)
+	updateToggle()
+end
+
 function RecipeProfit.Render()
 	refreshQueued = false
+	updateToggle()
 	if not (scrollBox and scrollBox:IsVisible()) then return end
 	-- A window opened again asks the price addons again.
 	if stale and wanted() then
@@ -143,6 +320,7 @@ end
 
 -- Redraws once shortly, however many times it's called.
 function RecipeProfit.Refresh()
+	updateToggle()
 	if refreshQueued or not (scrollBox and scrollBox:IsVisible()) then return end
 	refreshQueued = true
 	C_Timer.After(REFRESH_DELAY, RecipeProfit.Render)
@@ -163,8 +341,10 @@ function RecipeProfit.Init()
 	local list = ns.Blizzard.RecipeList()
 	if not (event and list and list.ScrollBox and list.ScrollBox.RegisterCallback) then return end
 	scrollBox = list.ScrollBox
+	createToggle()
 	scrollBox:RegisterCallback(event, onRowFilled, RecipeProfit)
 	scrollBox:HookScript("OnShow", RecipeProfit.Refresh)
+	scrollBox:HookScript("OnHide", updateToggle)
 	ns.BestCrafts.Watch(RecipeProfit.Refresh, wanted)
 	ns.Blizzard.WatchWindowClosed(function() stale = true end)
 

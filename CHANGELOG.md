@@ -1,5 +1,8 @@
 # Changelog
 
+## 5.20.0
+- **Recipe list Profit / Cost / Skill-up toggle:** switch what shows on the right of each row in Blizzard's profession recipe list using the new **List: Profit** button at the top left of the profession window (or **Recipe list shows** in Options). Left-click cycles between **Profit** and **Crafting cost** on Retail — and **Profit**, **Crafting cost**, **Net skill-up cost**, and **Raw skill-up cost** on WoW Forever (right-click to pick directly). Helpful while leveling a profession, including enchants and recipes with no auction price.
+
 ## 5.19.0
 - **Vendor price floor for sale proceeds:** when an item's vendor sell value pays more than its net auction house proceeds (after enabled fees), Craftonomics now uses the vendor sell price with no auction house fees instead. Items with no auction house price continue to show as unpriced rather than falling back to vendor price. On by default; toggle with **Use vendor price as minimum sale price** on the Prices options page.
 - **Subtract expected AH deposit as a fee (optional):** turn on **Subtract expected AH deposit** on the Prices options page (off by default) to deduct expected lost auction house deposits across relistings right alongside the 5% auction house cut across the panel, break-even price, Best crafts, All recipes, Recipe Profit tooltips, and Craft vs AH tooltips. Pick which duration to estimate with **Expected deposit duration** (**Sell tab's duration**, or `12h` / `24h` / `48h` on Retail and `2h` / `8h` / `24h` on WoW Forever).

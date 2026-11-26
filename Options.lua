@@ -200,13 +200,30 @@ function Options.Create()
 			"The panel always shows both: the expected profit, and Without procs under it.\n\n" ..
 			"Also in the Best crafts list's Filter menu.")
 	end
-	checkbox("listProfit", "Show profit on the recipe list",
-		"Every recipe you know shows what one craft makes, at the right of its row in the profession window's recipe " ..
-		"list. It's the Best crafts list's profit: after the auction house cut, " ..
-		(quality and "at the rank and with the materials your crafting strategy picks" or "with your crafting strategy") ..
-		".\n\nGreen makes gold, red loses it. Grey with a ?: a material has no price, so the profit is too high. " ..
-		"Recipes whose item has no price show nothing.\n\n" ..
+	checkbox("listProfit", "Show profit/cost on the recipe list",
+		"Every recipe you know shows its profit or crafting cost at the right of its row in the profession " ..
+		"window's recipe list, using your crafting strategy and the top-left List toggle button.\n\n" ..
 		"The first time you open a profession, the numbers take a moment to fill in.")
+	local listMetricChoices = {
+		{ "profit", "Profit" },
+		{ "cost", "Crafting cost" },
+	}
+	if ns.SKILLUPS then
+		listMetricChoices[#listMetricChoices + 1] = { "skillup", "Net skill-up cost" }
+		listMetricChoices[#listMetricChoices + 1] = { "rawSkillup", "Raw skill-up cost" }
+	end
+	dropdown("listMetric", "Recipe list shows", listMetricChoices, "What to show on each recipe row in the profession window's recipe list.\n\n" ..
+		"Profit: green makes gold, red loses it. Grey with a ? means a material has no price, so the profit is too high. " ..
+		"Recipes whose item has no price show nothing.\n\n" ..
+		"Crafting cost: what the materials for one craft cost, in white (grey with a ? when a material has no price). " ..
+		"Helpful while leveling a profession, including enchants and recipes with no auction price.\n\n" ..
+		(ns.SKILLUPS and (
+			"Net skill-up cost: average net gold cost per skill point (materials minus resale or vendor value, divided by skill-up chance). " ..
+			"Shows Free in green when crafting breaks even or profits; grey recipes are left blank.\n\n" ..
+			"Raw skill-up cost: average raw material cost per skill point (materials divided by skill-up chance, ignoring resale value). " ..
+			"Grey recipes are left blank.\n\n" ..
+			"Left-click the top-left List button in the profession window to cycle modes, or right-click to pick directly.")
+		or "Also toggled directly from the List: Profit / List: Cost button at the top left of the profession window."))
 
 	header("Minimap button")
 	checkbox("minimap", "Show minimap button",

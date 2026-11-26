@@ -35,7 +35,7 @@ Craftonomics answers in gold: **profit or loss?** A panel next to your professio
 
 - **Expected profit** with procs, **return** on materials, and **break-even price**
 - **Best crafts**: movable, resizable standalone window (`12pt`–`20pt` text) with a **Profession** switcher and **All recipes** button, ranking every recipe across your characters
-- **Profit on every recipe** in Blizzard's recipe list
+- **Profit, crafting cost, or skill-up cost on every recipe** in Blizzard's recipe list (toggleable right in the profession window)
 - **All recipes**: every profession's recipes as a customizable-column list or **trend heatmap**
 - **Ledger**: crafted profit, posted auctions, and where crafts went
 - **Auction house window**: shopping list, selling, and undercut cancelling
@@ -69,18 +69,21 @@ This addon was made with AI.
 ## B. Upload File form
 
 **Files:** two, each uploaded with only its own game versions (why is in [UPLOADING.md](../UPLOADING.md)). The display name, release type and changelog are the same for both.
-- `dist\Craftonomics-5.19.0-retail.zip`: Retail `12.1.5`
-- `dist\Craftonomics-5.19.0-forever.zip`: WoW Forever `1.60.1`
+- `dist\Craftonomics-5.20.0-retail.zip`: Retail `12.1.5`
+- `dist\Craftonomics-5.20.0-forever.zip`: WoW Forever `1.60.1`
 
 **Display name**
 ```
-Craftonomics 5.19.0
+Craftonomics 5.20.0
 ```
 
 **Release type:** `Release`
 
 **Changelog** (paste only the newest part; paste older parts too if they never went up)
 ```markdown
+5.20.0
+- **Recipe list Profit / Cost / Skill-up toggle:** switch what shows on the right of each row in Blizzard's profession recipe list using the new **List: Profit** button at the top left of the profession window (or **Recipe list shows** in Options). Left-click cycles between **Profit** and **Crafting cost** on Retail — and **Profit**, **Crafting cost**, **Net skill-up cost**, and **Raw skill-up cost** on WoW Forever (right-click to pick directly). Helpful while leveling a profession, including enchants and recipes with no auction price.
+
 5.19.0
 - **Vendor price floor for sale proceeds:** when an item's vendor sell value pays more than its net auction house proceeds (after enabled fees), Craftonomics now uses the vendor sell price with no auction house fees instead. Items with no auction house price continue to show as unpriced rather than falling back to vendor price. On by default; toggle with **Use vendor price as minimum sale price** on the Prices options page.
 - **Subtract expected AH deposit as a fee (optional):** turn on **Subtract expected AH deposit** on the Prices options page (off by default) to deduct expected lost auction house deposits across relistings right alongside the 5% auction house cut across the panel, break-even price, Best crafts, All recipes, Recipe Profit tooltips, and Craft vs AH tooltips. Pick which duration to estimate with **Expected deposit duration** (**Sell tab's duration**, or `12h` / `24h` / `48h` on Retail and `2h` / `8h` / `24h` on WoW Forever).
