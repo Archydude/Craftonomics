@@ -332,8 +332,8 @@ ns.STRATEGIES = ns.QUALITY_CRAFTING and {
 		"count, once you've opened that profession's Best crafts list." },
 	{ "mix", "Cheapest way", "Cheapest way",
 		"Each material you know the recipe for is crafted or bought, whichever costs less, down to what has to be " ..
-		"bought. The shopping list buys what that takes. Recipes from all this character's professions count, once " ..
-		"you've opened that profession's Best crafts list." },
+		"bought (skipping cooldown-locked crafts like transmutes). The shopping list buys what that takes. " ..
+		"Recipes from all this character's professions count, once you've opened that profession's Best crafts list." },
 }
 
 -- The current crafting strategy's entry in ns.STRATEGIES.

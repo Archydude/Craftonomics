@@ -555,6 +555,11 @@ local function foreverRecipesFor(itemID)
 	return foreverByItem[itemID]
 end
 
+local function isCooldownRecipe(recipeID)
+	return (ns.COOLDOWN_RECIPES and ns.COOLDOWN_RECIPES[recipeID] == true)
+		or (ns.Chains and ns.Chains.HasCooldown and ns.Chains.HasCooldown(recipeID) == true)
+end
+
 local function foreverSubCost(matID, profID, depth, working)
 	if ns.Chains and ns.Chains.Active and ns.Chains.Active()
 		and ns.Chains.RecipeFor and ns.Chains.RecipeFor(matID) then
@@ -570,7 +575,7 @@ local function foreverSubCost(matID, profID, depth, working)
 	local subCraft
 	working[matID] = true
 	for _, sub in ipairs(candidates) do
-		if sub.professionID == profID then
+		if sub.professionID == profID and not (strategy == "mix" and isCooldownRecipe(sub.recipeID)) then
 			local total, ok = 0, true
 			for _, mat in ipairs(sub.materials) do
 				local price = foreverSubCost(mat.itemID, profID, depth + 1, working)

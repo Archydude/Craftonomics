@@ -69,18 +69,21 @@ This addon was made with AI.
 ## B. Upload File form
 
 **Files:** two, each uploaded with only its own game versions (why is in [UPLOADING.md](../UPLOADING.md)). The display name, release type and changelog are the same for both.
-- `dist\Craftonomics-5.20.1-retail.zip`: Retail `12.1.5`
-- `dist\Craftonomics-5.20.1-forever.zip`: WoW Forever `1.60.1`
+- `dist\Craftonomics-5.20.2-retail.zip`: Retail `12.1.5`
+- `dist\Craftonomics-5.20.2-forever.zip`: WoW Forever `1.60.1`
 
 **Display name**
 ```
-Craftonomics 5.20.1
+Craftonomics 5.20.2
 ```
 
 **Release type:** `Release`
 
 **Changelog** (paste only the newest part; paste older parts too if they never went up)
 ```markdown
+5.20.2
+- **Cheapest way skips cooldown crafts (WoW Forever):** cooldown-locked recipes (such as Alchemy transmutes and Mooncloth) are no longer used by the **Cheapest way** crafting strategy so they don't unrealistically skew material costs. When a character knows both a cooldown recipe and a non-cooldown recipe for the same material (like *Smelt Gold* and *Transmute: Iron to Gold*), the non-cooldown recipe is always preferred.
+
 5.20.1
 - **Crafts box arrows & Max fill:** added `<` / `>` stepper arrows (Shift-click for 10) and mouse-wheel scrolling to the panel's **Crafts** box, and clicking **Max** now fills that craftable amount into the **Crafts** box so the panel updates and counts down as crafts finish.
 - Fixed: on the **Sell** tab, advancing to a non-commodity item (such as a recipe, pattern, or gear) right after posting an item no longer falsely shows **"None for sale right now."** or leaves **Post** disabled when active listings exist.

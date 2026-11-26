@@ -13,10 +13,27 @@ ns.Chains = Chains
 -- How many steps down the shopping list follows materials of materials. Real
 -- chains are two or three deep; this stops a loop of recipes making each other.
 local MAX_DEPTH = 6
+local COOLDOWN_MIN_MS = 60000
+
+-- Whether `recipeID` has a craft cooldown longer than a minute (e.g. transmutes,
+-- Mooncloth), so "Cheapest way" skips it and doesn't skew material costs.
+function Chains.HasCooldown(recipeID)
+	if not recipeID then return false end
+	if ns.COOLDOWN_RECIPES and ns.COOLDOWN_RECIPES[recipeID] then return true end
+	if GetSpellBaseCooldown then
+		local cooldown = GetSpellBaseCooldown(recipeID)
+		if cooldown and cooldown > COOLDOWN_MIN_MS then return true end
+	end
+	if C_TradeSkillUI and C_TradeSkillUI.GetRecipeCooldown then
+		local ok, cooldown = pcall(C_TradeSkillUI.GetRecipeCooldown, recipeID)
+		if ok and cooldown and cooldown > 60 then return true end
+	end
+	return false
+end
 
 -- itemID -> the recipe of this character's that makes it: { name, recipeID,
 -- professionID = the profession it belongs to, made = how
--- many one craft makes on average, madeAtLeast, materials = { { itemID, qty } ... } }.
+-- many one craft makes on average, madeAtLeast, cooldown, materials = { { itemID, qty } ... } }.
 -- Built when first needed, and again after a scan is saved.
 local byItem
 
@@ -39,18 +56,22 @@ local function build()
 	byItem = {}
 	for _, entry in ipairs(ns.Scans.Mine()) do
 		local output = entry.outputs[1]
-		if output and output.itemID and not byItem[output.itemID] then
-			local materials = {}
-			for _, other in ipairs(entry.others) do
-				-- Forever's slots take one item each.
-				if other.itemIDs[1] then materials[#materials + 1] = { itemID = other.itemIDs[1], qty = other.qty } end
-			end
-			local schematic = entry.schematic
-			local made = ((schematic.quantityMin or 1) + (schematic.quantityMax or 1)) / 2
-			if #materials > 0 and made > 0 then
-				byItem[output.itemID] = { name = entry.name, recipeID = entry.recipeID,
-					professionID = entry.professionID, made = made,
-					madeAtLeast = math.max(schematic.quantityMin or 1, 1), materials = materials }
+		if output and output.itemID then
+			local existing = byItem[output.itemID]
+			local cooldown = Chains.HasCooldown(entry.recipeID)
+			if not existing or (existing.cooldown and not cooldown) then
+				local materials = {}
+				for _, other in ipairs(entry.others) do
+					-- Forever's slots take one item each.
+					if other.itemIDs[1] then materials[#materials + 1] = { itemID = other.itemIDs[1], qty = other.qty } end
+				end
+				local schematic = entry.schematic
+				local made = ((schematic.quantityMin or 1) + (schematic.quantityMax or 1)) / 2
+				if #materials > 0 and made > 0 then
+					byItem[output.itemID] = { name = entry.name, recipeID = entry.recipeID,
+						professionID = entry.professionID, made = made, cooldown = cooldown,
+						madeAtLeast = math.max(schematic.quantityMin or 1, 1), materials = materials }
+				end
 			end
 		end
 	end
@@ -83,10 +104,13 @@ function Chains.CraftCost(itemID)
 end
 
 -- What crafting one of an item costs when the crafting strategy crafts it, or nil
--- when it buys it. Craft myself crafts whatever it can price; Cheapest way only
--- what costs less to craft than to buy, or can't be bought.
+-- when it buys it. Craft myself crafts whatever it can price; Cheapest way skips
+-- cooldown recipes and only crafts what costs less to craft than to buy, or can't be bought.
 function Chains.Cost(itemID)
 	if not Chains.Active() then return end
+	local recipe = Chains.RecipeFor(itemID)
+	if not recipe then return end
+	if ns.db.craftStrategy == "mix" and recipe.cooldown then return end
 	local cost = Chains.CraftCost(itemID)
 	if not cost or ns.db.craftStrategy == "craft" then return cost end
 	local buy = ns.Prices.Buy(itemID)
@@ -98,7 +122,9 @@ end
 -- price.
 function Chains.Crafted(itemID)
 	if not Chains.Active() then return end
-	if ns.db.craftStrategy == "craft" or Chains.Cost(itemID) then return Chains.RecipeFor(itemID) end
+	local recipe = Chains.RecipeFor(itemID)
+	if not recipe then return end
+	if ns.db.craftStrategy == "craft" or Chains.Cost(itemID) then return recipe end
 end
 
 -- What to buy for `needs` ({ counts = itemIDs that fill it, itemID = the one to
