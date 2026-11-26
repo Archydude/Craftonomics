@@ -314,7 +314,8 @@ local function fillNative()
 		page.Duration.Dropdown:GenerateMenu()
 	end
 	page.QuantityInput:SetQuantity(amountBox:GetNumber())
-	page.PriceInput:SetAmount(getPrice())
+	local price = getPrice()
+	if price > 0 or priceTouched then page.PriceInput:SetAmount(price) end
 	page:UpdatePostState()
 	pushing = false
 end
@@ -533,7 +534,11 @@ local function choose(entry, said)
 	local info = C_AuctionHouse.GetItemKeyInfo(itemKey)
 	local equipment
 	if info then equipment = info.isEquipment else equipment = C_Item.IsEquippableItem(entry.link) end
-	pick = { key = entry.key, equipment = not entry.commodity and equipment or false }
+	pick = {
+		key = entry.key,
+		equipment = not entry.commodity and equipment or false,
+		speciesID = itemKey.battlePetSpeciesID or 0,
+	}
 	if pick.equipment then
 		-- Gear is compared with every item level of it, as the game's own sell page
 		-- does, and priced from the ones of its own level (any level for green items).
@@ -543,7 +548,7 @@ local function choose(entry, said)
 	end
 	searchNote = (said and (said .. " ") or "") .. "Checking prices..."
 	local key = entry.key
-	Search.Request(OWNER, itemKey, pick.equipment, function(results)
+	Search.Request(OWNER, itemKey, not entry.commodity, function(results)
 		if selected and selected.key == key then onListings(results) end
 	end, entry.commodity)
 	drawPicked()
@@ -1450,6 +1455,19 @@ end)
 -- Prices changed (an item was just looked up): the list shows them.
 function Sell.Redraw()
 	if panel and panel:IsVisible() and Search.IsOpen() then drawBags() end
+end
+
+-- If non-empty listings arrive for the currently picked item after an empty
+-- answer or directly from the game's Sell page, fill the price right away.
+Search.onSellResults = function(itemKey, commodity, rows)
+	if not (panel and panel:IsVisible() and selected and rows and rows[1]) then return end
+	if selected.commodity ~= commodity or itemKey.itemID ~= selected.itemID then return end
+	if selected.itemID == ns.PET_CAGE_ITEM and pick and (pick.speciesID or 0) ~= (itemKey.battlePetSpeciesID or 0) then
+		return
+	end
+	if priceTouched or getPrice() > 0 then return end
+	if listings and #listings > 0 then return end
+	onListings({ commodity = commodity, rows = rows })
 end
 
 -- The scan notice comes and goes with the scan.

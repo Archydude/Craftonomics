@@ -199,10 +199,11 @@ end
 -- crafts, as the game's own Create button does.
 local craftButton, craftButtonUsed
 -- The Max button, left of it: starts as many crafts as your materials make, as
--- the game's Create All button does.
+-- the game's Create All button does, and fills in the Crafts box.
 local maxButton
 local MAX_GAP = 4       -- between it and the Craft button
 local MAX_PADDING = 24  -- its width past its text
+local craftsBox, setCrafts
 
 -- Its text and whether it can be clicked follow the game's Create button and
 -- amount box: "Craft", or "Craft 5" for more than one.
@@ -225,8 +226,8 @@ local function showMaxTip(self)
 	GameTooltip:SetOwner(self, "ANCHOR_LEFT")
 	GameTooltip:SetText("Craft max")
 	if all then
-		GameTooltip:AddLine(format(all > 1 and "Crafts this %d times: as many as your materials make."
-			or "Crafts this once: all your materials make.", all), 1, 1, 1, true)
+		GameTooltip:AddLine(format(all > 1 and "Crafts this %d times: as many as your materials make, and sets the Crafts box to %d."
+			or "Crafts this once: all your materials make.", all, all), 1, 1, 1, true)
 		GameTooltip:AddLine("The same as the Create All button in the crafting window, with the materials picked there.",
 			0.53, 0.53, 0.53, true)
 	else
@@ -271,6 +272,10 @@ local function addCraftButton(top)
 		maxButton:SetPoint("RIGHT", craftButton, "LEFT", -MAX_GAP, 0)
 		maxButton:SetScript("OnClick", function()
 			GameTooltip:Hide()
+			local all = ns.Blizzard.CreateAllCount()
+			if not all then return end
+			if craftsBox then craftsBox:ClearFocus() end
+			setCrafts(all)
 			ns.Blizzard.CreateAll()
 		end)
 		maxButton:SetScript("OnEnter", showMaxTip)
@@ -394,15 +399,55 @@ end
 -- materials and shopping list button are for the number typed in it.
 local CRAFTS_BOX_WIDTH, CRAFTS_BOX_HEIGHT = 44, 20
 local CRAFTS_ROW = 24
-local craftsBox, craftsBoxUsed
+local CRAFTS_STEP_SIZE = 22
+local CRAFTS_SHIFT_STEP = 10
+local craftsBoxUsed, craftsDec, craftsInc
 
-local function setCrafts(value)
+local function updateCraftsButtons()
+	if craftsDec then craftsDec:SetEnabled(crafts > 1) end
+	if craftsInc then craftsInc:SetEnabled(crafts < ns.Shopping.MAX_CRAFTS) end
+end
+
+setCrafts = function(value)
 	value = math.max(1, math.min(math.floor(value or 1), ns.Shopping.MAX_CRAFTS))
-	if value == crafts then return end
+	if value == crafts then
+		if craftsBox and not craftsBox:HasFocus() then craftsBox:SetText(tostring(crafts)) end
+		updateCraftsButtons()
+		return
+	end
 	crafts = value
+	if craftsBox and not craftsBox:HasFocus() then craftsBox:SetText(tostring(crafts)) end
+	updateCraftsButtons()
 	-- The amount box next to Create follows it.
 	ns.Blizzard.SetCraftAmount(crafts, craftsKey)
 	Panel.Refresh()
+end
+
+local function stepCrafts(delta)
+	if craftsBox then craftsBox:ClearFocus() end
+	setCrafts(crafts + delta * (IsShiftKeyDown() and CRAFTS_SHIFT_STEP or 1))
+end
+
+local function createStepButton(direction, texturePrefix, title, stepDesc)
+	local btn = CreateFrame("Button", nil, frame)
+	btn:SetSize(CRAFTS_STEP_SIZE, CRAFTS_STEP_SIZE)
+	btn:SetFrameLevel(frame:GetFrameLevel() + 3)
+	btn:SetNormalTexture("Interface\\Buttons\\" .. texturePrefix .. "-Up")
+	btn:SetPushedTexture("Interface\\Buttons\\" .. texturePrefix .. "-Down")
+	btn:SetDisabledTexture("Interface\\Buttons\\" .. texturePrefix .. "-Disabled")
+	btn:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight", "ADD")
+	btn:SetMotionScriptsWhileDisabled(true)
+	btn:EnableMouseWheel(true)
+	btn:SetScript("OnClick", function() stepCrafts(direction) end)
+	btn:SetScript("OnMouseWheel", function(_, delta) stepCrafts(delta > 0 and 1 or -1) end)
+	btn:SetScript("OnEnter", function(self)
+		GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+		GameTooltip:SetText(title)
+		GameTooltip:AddLine(stepDesc, 1, 1, 1, true)
+		GameTooltip:Show()
+	end)
+	btn:SetScript("OnLeave", GameTooltip_Hide)
+	return btn
 end
 
 local function createCraftsBox()
@@ -414,10 +459,12 @@ local function createCraftsBox()
 	box:SetMaxLetters(#tostring(ns.Shopping.MAX_CRAFTS))
 	box:SetJustifyH("CENTER")
 	box:SetFontObject(fonts.body)
+	box:EnableMouseWheel(true)
 	-- The panel follows the number while it's typed; an empty box counts as 1.
 	box:SetScript("OnTextChanged", function(self, userInput)
 		if userInput then setCrafts(tonumber(self:GetText())) end
 	end)
+	box:SetScript("OnMouseWheel", function(_, delta) stepCrafts(delta > 0 and 1 or -1) end)
 	box:SetScript("OnEnterPressed", box.ClearFocus)
 	box:SetScript("OnEscapePressed", box.ClearFocus)
 	box:SetScript("OnEditFocusGained", function(self) self:HighlightText() end)
@@ -428,8 +475,8 @@ local function createCraftsBox()
 	box:SetScript("OnEnter", function(self)
 		GameTooltip:SetOwner(self, "ANCHOR_LEFT")
 		GameTooltip:SetText("Crafts")
-		GameTooltip:AddLine("The profit, the materials and the shopping list button are for this many crafts. The amount "
-			.. "box next to Create gets the same number, up to what you can make now.", 1, 1, 1, true)
+		GameTooltip:AddLine("The profit, the materials and the shopping list button are for this many crafts. Type a number, "
+			.. "click the < / > arrows (Shift-click for 10), or scroll. The amount box next to Create gets the same number, up to what you can make now.", 1, 1, 1, true)
 		GameTooltip:AddLine("Every craft is counted at today's prices. Buying or selling a lot at once can move them, "
 			.. "so many crafts can make less than this.", 0.53, 0.53, 0.53, true)
 		GameTooltip:Show()
@@ -440,16 +487,25 @@ end
 
 local function addCraftsRow()
 	craftsBox = craftsBox or createCraftsBox()
+	craftsDec = craftsDec or createStepButton(-1, "UI-SpellbookIcon-PrevPage", "Decrease crafts", "Click: -1\nShift-click: -10")
+	craftsInc = craftsInc or createStepButton(1, "UI-SpellbookIcon-NextPage", "Increase crafts", "Click: +1\nShift-click: +10")
 	local top = -Layout.PAD_TOP - contentHeight
 	local row = addRow("Crafts")
 	row.left:ClearAllPoints()
 	row.left:SetPoint("LEFT", frame, "TOPLEFT", Layout.PAD_SIDE, top - CRAFTS_ROW / 2)
 	contentHeight = contentHeight - math.max(Layout.LINE_HEIGHT, math.ceil(row.left:GetStringHeight()) + 3) + CRAFTS_ROW
+	craftsInc:ClearAllPoints()
+	craftsInc:SetPoint("RIGHT", frame, "TOPRIGHT", -Layout.PAD_SIDE + 2, top - CRAFTS_ROW / 2)
 	craftsBox:ClearAllPoints()
-	craftsBox:SetPoint("RIGHT", frame, "TOPRIGHT", -Layout.PAD_SIDE, top - CRAFTS_ROW / 2)
+	craftsBox:SetPoint("RIGHT", craftsInc, "LEFT", -4, 0)
+	craftsDec:ClearAllPoints()
+	craftsDec:SetPoint("RIGHT", craftsBox, "LEFT", -7, 0)
 	-- Not while it's being typed in: the text is the player's until they're done.
 	if not craftsBox:HasFocus() then craftsBox:SetText(tostring(crafts)) end
 	craftsBox:Show()
+	craftsDec:Show()
+	craftsInc:Show()
+	updateCraftsButtons()
 	craftsBoxUsed = true
 end
 
@@ -1879,7 +1935,11 @@ function Panel.Render()
 		craftButton:Hide()
 		maxButton:Hide()
 	end
-	if craftsBox and not craftsBoxUsed then craftsBox:Hide() end
+	if craftsBox and not craftsBoxUsed then
+		craftsBox:Hide()
+		if craftsDec then craftsDec:Hide() end
+		if craftsInc then craftsInc:Hide() end
+	end
 	for key, check in pairs(checks) do
 		if not checksUsed[key] then check:Hide() end
 	end

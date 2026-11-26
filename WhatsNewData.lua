@@ -2,10 +2,14 @@
 ArchdudeWhatsNew:Register("Craftonomics", {
 	title = "Craftonomics",
 	icon = "Interface\\Icons\\INV_Hammer_20",
-	version = "5.20.0",
+	version = "5.20.1",
 	seen = "CraftonomicsWhatsNew",
 	saved = { "CraftonomicsDB", "CraftonomicsCharDB" },
 	changes = {
+		{ "5.20.1",
+			"|cffffd100Crafts box arrows & Max fill:|r added |cffffd100<|r / |cffffd100>|r stepper arrows (Shift-click for 10) and mouse-wheel scrolling to the panel's |cffffd100Crafts|r box, and clicking |cffffd100Max|r now fills that craftable amount into the |cffffd100Crafts|r box so the panel updates and counts down as crafts finish.",
+			"Fixed: on the |cffffd100Sell|r tab, advancing to a non-commodity item (such as a recipe, pattern, or gear) right after posting an item no longer falsely shows |cffffd100\"None for sale right now.\"|r or leaves |cffffd100Post|r disabled when active listings exist.",
+		},
 		{ "5.20.0",
 			"|cffffd100Recipe list Profit / Cost / Skill-up toggle:|r switch what shows on the right of each row in Blizzard's profession recipe list using the new |cffffd100List: Profit|r button at the top left of the profession window (or |cffffd100Recipe list shows|r in Options). Left-click cycles between |cffffd100Profit|r and |cffffd100Crafting cost|r on Retail — and |cffffd100Profit|r, |cffffd100Crafting cost|r, |cffffd100Net skill-up cost|r, and |cffffd100Raw skill-up cost|r on WoW Forever (right-click to pick directly). Helpful while leveling a profession, including enchants and recipes with no auction price.",
 		},
@@ -51,10 +55,6 @@ ArchdudeWhatsNew:Register("Craftonomics", {
 		},
 		{ "5.13.0",
 			"|cffffd100Recipe profit on recipe tooltips:|r the tooltip of a recipe you can learn (a pattern, plan, schematic...) gets a |cffffd100Recipe Profit|r line: what one craft of the recipe it teaches makes, in green, or loses, in red, whether or not you know the recipe. Under it is what the recipe makes. It's priced as the All recipes window prices it: the materials bought and what the craft makes sold; on Retail at the rank picked in that window. Its return and TSM sale rate show under it as |cffffd100Best craft's return|r and |cffffd100Best craft's sale rate|r say. Recipes with no price for what they make or for one of their materials have no line, nor do ones that make an item bound when picked up, nor enchanting formulas on WoW Forever. Turn it off with |cffffd100Show recipe profit|r on the Tooltips options page.",
-		},
-		{ "5.12.2",
-			"|cffffd100Lowest vs market follows Freshest prices:|r with |cffffd100Freshest prices|r as your Price addon, the tooltip's lowest vs market line now compares the newest lowest price known with TSM's market value: TSM's, a scan's, or one you just looked up at the auction house. When that price comes from a scan and not from TSM, the line is called |cffffd100Lowest vs TSM Market|r.",
-			"|cffffd100My auctions: rows you can read.|r The grey line under each auction was cut off. Each row now has your price on one line, and under it what others ask and how many come before yours.",
 		},
 	},
 })

@@ -69,18 +69,22 @@ This addon was made with AI.
 ## B. Upload File form
 
 **Files:** two, each uploaded with only its own game versions (why is in [UPLOADING.md](../UPLOADING.md)). The display name, release type and changelog are the same for both.
-- `dist\Craftonomics-5.20.0-retail.zip`: Retail `12.1.5`
-- `dist\Craftonomics-5.20.0-forever.zip`: WoW Forever `1.60.1`
+- `dist\Craftonomics-5.20.1-retail.zip`: Retail `12.1.5`
+- `dist\Craftonomics-5.20.1-forever.zip`: WoW Forever `1.60.1`
 
 **Display name**
 ```
-Craftonomics 5.20.0
+Craftonomics 5.20.1
 ```
 
 **Release type:** `Release`
 
 **Changelog** (paste only the newest part; paste older parts too if they never went up)
 ```markdown
+5.20.1
+- **Crafts box arrows & Max fill:** added `<` / `>` stepper arrows (Shift-click for 10) and mouse-wheel scrolling to the panel's **Crafts** box, and clicking **Max** now fills that craftable amount into the **Crafts** box so the panel updates and counts down as crafts finish.
+- Fixed: on the **Sell** tab, advancing to a non-commodity item (such as a recipe, pattern, or gear) right after posting an item no longer falsely shows **"None for sale right now."** or leaves **Post** disabled when active listings exist.
+
 5.20.0
 - **Recipe list Profit / Cost / Skill-up toggle:** switch what shows on the right of each row in Blizzard's profession recipe list using the new **List: Profit** button at the top left of the profession window (or **Recipe list shows** in Options). Left-click cycles between **Profit** and **Crafting cost** on Retail — and **Profit**, **Crafting cost**, **Net skill-up cost**, and **Raw skill-up cost** on WoW Forever (right-click to pick directly). Helpful while leveling a profession, including enchants and recipes with no auction price.
 

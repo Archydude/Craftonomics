@@ -1,5 +1,9 @@
 # Changelog
 
+## 5.20.1
+- **Crafts box arrows & Max fill:** added `<` / `>` stepper arrows (Shift-click for 10) and mouse-wheel scrolling to the panel's **Crafts** box, and clicking **Max** now fills that craftable amount into the **Crafts** box so the panel updates and counts down as crafts finish.
+- Fixed: on the **Sell** tab, advancing to a non-commodity item (such as a recipe, pattern, or gear) right after posting an item no longer falsely shows **"None for sale right now."** or leaves **Post** disabled when active listings exist.
+
 ## 5.20.0
 - **Recipe list Profit / Cost / Skill-up toggle:** switch what shows on the right of each row in Blizzard's profession recipe list using the new **List: Profit** button at the top left of the profession window (or **Recipe list shows** in Options). Left-click cycles between **Profit** and **Crafting cost** on Retail — and **Profit**, **Crafting cost**, **Net skill-up cost**, and **Raw skill-up cost** on WoW Forever (right-click to pick directly). Helpful while leveling a profession, including enchants and recipes with no auction price.
 

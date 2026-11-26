@@ -82,6 +82,24 @@ function Search.ReadOwned()
 	return list
 end
 
+local function sameSpecies(a, b)
+	return (a.battlePetSpeciesID or 0) == (b.battlePetSpeciesID or 0)
+end
+
+local function readItemWithFallback(eventKey, requestKey)
+	local rows = readItem(eventKey)
+	if #rows == 0 and requestKey and requestKey ~= eventKey then
+		rows = readItem(requestKey)
+	end
+	return rows
+end
+
+local function notifySellResults(itemKey, commodity, rows)
+	if rows[1] and Search.onSellResults then
+		xpcall(Search.onSellResults, geterrorhandler(), itemKey, commodity, rows)
+	end
+end
+
 local pump
 
 -- An item's listings came back, cheapest first: Search.onListings, when set, is
@@ -259,16 +277,36 @@ events:SetScript("OnEvent", function(_, event, arg)
 		-- Someone else asked about this stackable item (the game's own window does,
 		-- for the item on its sell page): the questions about it that are still
 		-- waiting their turn here are answered by the same listings.
-		learned({ itemID = arg }, readCommodity(arg))
+		local rows = readCommodity(arg)
+		local itemKey = { itemID = arg }
+		learned(itemKey, rows)
 		for index = #queue, 1, -1 do
 			local job = queue[index]
 			if job.itemKey and not job.owned and not job.browse and job.itemKey.itemID == arg then
 				table.remove(queue, index)
 				if job.callback then
-					xpcall(job.callback, geterrorhandler(), { commodity = true, rows = readCommodity(arg) })
+					xpcall(job.callback, geterrorhandler(), { commodity = true, rows = rows })
 				end
 			end
 		end
+		notifySellResults(itemKey, true, rows)
+	elseif event == "ITEM_SEARCH_RESULTS_UPDATED" and type(arg) == "table" and not (active and not active.browse
+		and not active.owned and active.itemKey.itemID == arg.itemID and sameSpecies(active.itemKey, arg)) then
+		-- The game's own Sell page answered for a non-commodity item while our queue
+		-- was waiting or idle: fulfill matching non-separate requests and refresh Sell.
+		local rows = readItem(arg)
+		learned(arg, rows, (arg.itemLevel or 0) == 0)
+		for index = #queue, 1, -1 do
+			local job = queue[index]
+			if job.itemKey and not job.owned and not job.browse and not job.separate
+				and job.itemKey.itemID == arg.itemID and sameSpecies(job.itemKey, arg) then
+				table.remove(queue, index)
+				if job.callback then
+					xpcall(job.callback, geterrorhandler(), { commodity = false, rows = rows })
+				end
+			end
+		end
+		notifySellResults(arg, false, rows)
 	elseif not active or active.browse then
 		return
 	elseif event == "OWNED_AUCTIONS_UPDATED" then
@@ -279,11 +317,14 @@ events:SetScript("OnEvent", function(_, event, arg)
 		if arg == active.itemKey.itemID then
 			local rows = readCommodity(arg)
 			learned(active.itemKey, rows)
+			notifySellResults(active.itemKey, true, rows)
 			finish(active, { commodity = true, rows = rows })
 		end
-	elseif type(arg) == "table" and arg.itemID == active.itemKey.itemID then
-		local rows = readItem(active.itemKey)
-		learned(active.itemKey, rows, active.sell)
+	elseif event == "ITEM_SEARCH_RESULTS_UPDATED" and type(arg) == "table" and arg.itemID == active.itemKey.itemID
+		and sameSpecies(arg, active.itemKey) then
+		local rows = readItemWithFallback(arg, active.itemKey)
+		learned(arg, rows, active.sell or (arg.itemLevel or 0) == 0)
+		notifySellResults(arg, false, rows)
 		finish(active, { commodity = false, rows = rows })
 	end
 end)
