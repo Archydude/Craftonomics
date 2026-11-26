@@ -569,6 +569,18 @@ local function addVendorRow()
 	end)
 end
 
+-- Whether cooldown-locked recipes (transmutes, Mooncloth) are used when crafting
+-- or pricing materials under Craft myself / Cheapest way (WoW Forever only).
+local function addCooldownRow()
+	addCheckRow("chainCooldowns", "Use cooldown crafts for materials", function(tip)
+		tip:SetText("Use cooldown crafts for materials")
+		tip:AddLine("Include cooldown-locked recipes (like Alchemy transmutes and Mooncloth) when crafting or "
+			.. "pricing materials.", 1, 1, 1, true)
+		tip:AddLine("Off: cooldown crafts stay out of material costs and the shopping list. Also in the options.",
+			0.53, 0.53, 0.53, true)
+	end)
+end
+
 -- "1 craft" or "10 crafts": what this drawing's numbers are for.
 local function craftsText()
 	return ns.Shopping.CraftsText(count)
@@ -1705,6 +1717,7 @@ local function drawCraft(model)
 			or nil)
 	end
 	addVendorRow()
+	if ns.Chains and ns.Chains.Active and ns.Chains.Active() then addCooldownRow() end
 	drawBest(model)
 	drawProcs(model)
 	if output then drawMarket(model, disenchantDetails) end

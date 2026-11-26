@@ -2,10 +2,13 @@
 ArchdudeWhatsNew:Register("Craftonomics", {
 	title = "Craftonomics",
 	icon = "Interface\\Icons\\INV_Hammer_20",
-	version = "5.20.2",
+	version = "5.21.0",
 	seen = "CraftonomicsWhatsNew",
 	saved = { "CraftonomicsDB", "CraftonomicsCharDB" },
 	changes = {
+		{ "5.21.0",
+			"|cffffd100Use cooldown crafts for materials (WoW Forever):|r added a |cffffd100Use cooldown crafts for materials|r checkbox (off by default) in |cffffd100Options|r and on the crafting panel right under |cffffd100Buy vendor items on the auction house|r when |cffffd100Craft myself|r or |cffffd100Cheapest way|r is active. Both strategies skip cooldown-locked recipes (such as Alchemy transmutes and Mooncloth) while this is off, and turning it on lets either strategy craft and price those materials while still preferring non-cooldown recipes (like Smelt Gold over Transmute: Iron to Gold) when your character knows both.",
+		},
 		{ "5.20.2",
 			"|cffffd100Cheapest way skips cooldown crafts (WoW Forever):|r cooldown-locked recipes (such as Alchemy transmutes and Mooncloth) are no longer used by the |cffffd100Cheapest way|r crafting strategy so they don't unrealistically skew material costs. When a character knows both a cooldown recipe and a non-cooldown recipe for the same material (like Smelt Gold and Transmute: Iron to Gold), the non-cooldown recipe is always preferred.",
 		},
@@ -51,10 +54,6 @@ ArchdudeWhatsNew:Register("Craftonomics", {
 			"Fixed: Resourcefulness expected savings now learn from the actual gold saved per craft instead of treating every proc as a fixed share of materials.",
 			"Fixed: Ledger sales matching ignores cancelled auctions, expired auctions, and posts from other characters, and auction house deposits for non-stackable gear use the vendor-sell deposit rate.",
 			"Fixed: |cffffd100Freshest prices|r now recognizes Auctionator scans taken across midnight, the minimap button still opens Cooking when your primary profession slots are empty, and |cffffd100Forget|r works on WoW Forever.",
-		},
-		{ "5.14.0",
-			"|cffffd100Prices for Hoard Value:|r Hoard Value 1.6.0 and later can value your bags, bank and warband bank with Craftonomics' prices, from wherever Craftonomics' Price addon option says, its own auction house scans included.",
-			"Fixed: the |cffffd100Recipe Profit|r line on a recipe's tooltip showed a loss as the wrong amount, for example 83s for a loss of 16s 66c. A loss now shows with a minus: -16s 66c.",
 		},
 	},
 })

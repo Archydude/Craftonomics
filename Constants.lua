@@ -138,6 +138,7 @@ ns.DEFAULTS = {
 	countPatronBags = false, -- include learned live-AH value of patron bags and Moxie in order profits
 	bestMaterials = false, -- "Use Craftonomics Reagents" on the order form and crafting page: put them in every order or recipe you open
 	craftStrategy = ns.QUALITY_CRAFTING and "highest" or "buy", -- what the crafting page and Best crafts list craft (see ns.STRATEGIES)
+	chainCooldowns = false, -- WoW Forever: allow cooldown-locked recipes (transmutes, Mooncloth) when crafting or pricing materials
 	scanReminder = true,  -- remind you to scan the auction house when Auctionator's or Craftonomics' prices are old
 	autoScan = true,      -- Craftonomics' own price scan starts by itself at the auction house (see PriceScan.lua)
 	minimap = true,       -- the minimap button (its position is in minimapIcon, kept by LibDBIcon)
@@ -328,12 +329,14 @@ ns.STRATEGIES = ns.QUALITY_CRAFTING and {
 		"Materials you're missing are bought at their auction house price." },
 	{ "craft", "Craft myself", "Craft myself",
 		"Materials you know the recipe for are crafted, down to what has to be bought: they cost what their own " ..
-		"materials cost, and the shopping list buys those instead. Recipes from all this character's professions " ..
+		"materials cost, and the shopping list buys those instead. Cooldown-locked crafts like transmutes are " ..
+		"skipped unless Use cooldown crafts for materials is on. Recipes from all this character's professions " ..
 		"count, once you've opened that profession's Best crafts list." },
 	{ "mix", "Cheapest way", "Cheapest way",
 		"Each material you know the recipe for is crafted or bought, whichever costs less, down to what has to be " ..
-		"bought (skipping cooldown-locked crafts like transmutes). The shopping list buys what that takes. " ..
-		"Recipes from all this character's professions count, once you've opened that profession's Best crafts list." },
+		"bought (skipping cooldown-locked crafts like transmutes unless Use cooldown crafts for materials is on). " ..
+		"The shopping list buys what that takes. Recipes from all this character's professions count, once you've " ..
+		"opened that profession's Best crafts list." },
 }
 
 -- The current crafting strategy's entry in ns.STRATEGIES.

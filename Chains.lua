@@ -104,13 +104,14 @@ function Chains.CraftCost(itemID)
 end
 
 -- What crafting one of an item costs when the crafting strategy crafts it, or nil
--- when it buys it. Craft myself crafts whatever it can price; Cheapest way skips
--- cooldown recipes and only crafts what costs less to craft than to buy, or can't be bought.
+-- when it buys it. Craft myself crafts whatever it can price; Cheapest way
+-- only crafts what costs less to craft than to buy, or can't be bought. Both skip
+-- cooldown-locked recipes unless "Use cooldown crafts for materials" is on.
 function Chains.Cost(itemID)
 	if not Chains.Active() then return end
 	local recipe = Chains.RecipeFor(itemID)
 	if not recipe then return end
-	if ns.db.craftStrategy == "mix" and recipe.cooldown then return end
+	if recipe.cooldown and not ns.db.chainCooldowns then return end
 	local cost = Chains.CraftCost(itemID)
 	if not cost or ns.db.craftStrategy == "craft" then return cost end
 	local buy = ns.Prices.Buy(itemID)
@@ -119,11 +120,12 @@ end
 
 -- The recipe that makes an item when the crafting strategy crafts it (see
 -- Chains.Cost), or nil when it buys it. Craft myself also crafts what it can't
--- price.
+-- price (still skipping cooldown recipes unless "Use cooldown crafts for materials" is on).
 function Chains.Crafted(itemID)
 	if not Chains.Active() then return end
 	local recipe = Chains.RecipeFor(itemID)
 	if not recipe then return end
+	if recipe.cooldown and not ns.db.chainCooldowns then return end
 	if ns.db.craftStrategy == "craft" or Chains.Cost(itemID) then return recipe end
 end
 

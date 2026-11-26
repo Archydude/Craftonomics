@@ -1,5 +1,8 @@
 # Changelog
 
+## 5.21.0
+- **Use cooldown crafts for materials (WoW Forever):** added a **Use cooldown crafts for materials** checkbox (off by default) in **Options** and on the crafting panel right under **Buy vendor items on the auction house** when **Craft myself** or **Cheapest way** is active. Both strategies skip cooldown-locked recipes (such as Alchemy transmutes and Mooncloth) while this is off, and turning it on lets either strategy craft and price those materials while still preferring non-cooldown recipes (like *Smelt Gold* over *Transmute: Iron to Gold*) when your character knows both.
+
 ## 5.20.2
 - **Cheapest way skips cooldown crafts (WoW Forever):** cooldown-locked recipes (such as Alchemy transmutes and Mooncloth) are no longer used by the **Cheapest way** crafting strategy so they don't unrealistically skew material costs. When a character knows both a cooldown recipe and a non-cooldown recipe for the same material (like *Smelt Gold* and *Transmute: Iron to Gold*), the non-cooldown recipe is always preferred.
 

@@ -39,7 +39,7 @@ local STRATEGY_KEYS = {
 	patronMaterials = true, patronReach = true, concentrationFor = true,
 	countPatronBags = true, countProcs = true, ahCut = true, vendorFloor = true,
 	subtractExpectedDeposit = true, depositDuration = true, provider = true, matSource = true,
-	saleSource = true, vendorOnAH = true,
+	saleSource = true, vendorOnAH = true, chainCooldowns = true,
 }
 
 -- Any change re-places and redraws the panel. Prices and the concentration
@@ -190,6 +190,13 @@ function Options.Create()
 		"cheapest materials that reach the order's minimum quality." or
 		"It prices your materials, decides what the shopping list buys, and ranks the Best crafts list.") ..
 		"\n\nAlso on the panel when a recipe is open, and at the bottom of the Best crafts list.")
+	if not quality then
+		checkbox("chainCooldowns", "Use cooldown crafts for materials",
+			"Include cooldown-locked recipes (like Alchemy transmutes and Mooncloth) when Craft myself or " ..
+			"Cheapest way crafts or prices materials.\n\nOff by default: cooldown crafts stay out of material " ..
+			"costs and shopping lists so they don't skew profit.\n\nAlso on the panel when a recipe uses Craft " ..
+			"myself or Cheapest way.")
+	end
 	-- Procs only exist with Dragonflight's crafting.
 	if quality then
 		checkbox("countProcs", "Count procs in profits",

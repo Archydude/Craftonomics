@@ -573,9 +573,10 @@ local function foreverSubCost(matID, profID, depth, working)
 	local candidates = foreverRecipesFor(matID)
 	if not candidates then return buy end
 	local subCraft
+	local allowCooldowns = ns.db.chainCooldowns == true
 	working[matID] = true
 	for _, sub in ipairs(candidates) do
-		if sub.professionID == profID and not (strategy == "mix" and isCooldownRecipe(sub.recipeID)) then
+		if sub.professionID == profID and not (isCooldownRecipe(sub.recipeID) and not allowCooldowns) then
 			local total, ok = 0, true
 			for _, mat in ipairs(sub.materials) do
 				local price = foreverSubCost(mat.itemID, profID, depth + 1, working)
@@ -840,6 +841,7 @@ local function craftCacheKey()
 	local ver = ns.Scans and ns.Scans.Version and ns.Scans.Version() or 0
 	return table.concat({
 		tostring(db.craftStrategy),
+		tostring(db.chainCooldowns == true),
 		tostring(db.vendorOnAH),
 		tostring(db.provider),
 		tostring(db.matSource),
