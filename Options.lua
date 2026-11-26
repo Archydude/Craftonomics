@@ -49,7 +49,11 @@ local function onChanged(key)
 	ns.Panel.Refresh()
 	if key == "countPatronBags" and ns.Patron.Resort then ns.Patron.Resort() else ns.Patron.Redraw() end
 	ns.BestCrafts.Reprice(true)
-	ns.BestCraftsList.Refresh()
+	if key == "bestFontSize" and ns.BestCraftsList and ns.BestCraftsList.ApplyFont then
+		ns.BestCraftsList.ApplyFont()
+	else
+		ns.BestCraftsList.Refresh()
+	end
 	if ns.RecipeProfit then ns.RecipeProfit.Refresh() end
 	ns.Minimap.Update()
 	ns.ShoppingList.OptionsChanged()
@@ -60,7 +64,15 @@ local RESAVE = { saveTSMPrices = true, saveItems = true, provider = true, matSou
 
 -- Changes a setting from elsewhere (the Best crafts list), as the options would.
 function Options.Set(key, value)
-	if settings[key] then settings[key]:SetValue(value) else ns.db[key] = value; onChanged(key) end
+	if settings[key] then
+		settings[key]:SetValue(value)
+	else
+		ns.db[key] = value
+		if key == "provider" and value == "fresh" then
+			ns.db.matSource, ns.db.saleSource = "dbminbuyout", "dbminbuyout"
+		end
+		onChanged(key)
+	end
 end
 
 -- Refreshes calculations and lists after custom patron reward values change.
@@ -102,6 +114,10 @@ function Options.Create()
 	local function setting(key, varType, name)
 		local s = Settings.RegisterAddOnSetting(page, "CRAFTONOMICS_" .. key:upper(), key, db, varType, name, ns.DEFAULTS[key])
 		s:SetValueChangedCallback(function()
+			if key == "provider" and db.provider == "fresh" then
+				if settings.matSource and db.matSource ~= "dbminbuyout" then settings.matSource:SetValue("dbminbuyout") end
+				if settings.saleSource and db.saleSource ~= "dbminbuyout" then settings.saleSource:SetValue("dbminbuyout") end
+			end
 			onChanged(key)
 			-- A part of the auction house changed on its own: the choice for all of them reads it again.
 			if AH_PART[key] and allSetting and not settingAll then
@@ -208,12 +224,15 @@ function Options.Create()
 		"Craftonomics' scan prices everything.\n\n" ..
 		"Freshest prices uses whichever is newest: TSM (its desktop app's last download), Auctionator's last " ..
 		"scan, or Craftonomics' last full scan. An item the newest one didn't see takes the next newest's price. " ..
-		"With TSM loaded it only does so where the TSM price type below is Lowest auction right now, since " ..
-		"that's the price a scan gives too: set it for materials, for crafted items, or both. With any other TSM " ..
-		"price type it prices as Automatic does. The footers say which one is in use and how old it is. " ..
+		"Picking Freshest prices sets both TSM price types below to Lowest auction right now so scans and TSM " ..
+		"can stand in for each other; you can still change either one afterwards, and any other TSM price type " ..
+		"prices as Automatic does. The footers say which one is in use and how old it is. " ..
 		"Craftonomics' scan starts by itself at the auction house, at most once an hour, unless Auctionator does " ..
 		"the pricing there (Price with, on the Auction house page). A scan made with TSM in the game doesn't " ..
 		"count as a newer TSM price.\n\n" ..
+		"This choice also controls where market metrics come from (Market Value, Historical Price, Trend, Lowest vs " ..
+		"Market, Sale Rate, Sold per Day, and the Heatmap): picking Auctionator only or Craftonomics' scan only " ..
+		"calculates them from that addon's scan history and your personal sale rate even when TSM is loaded.\n\n" ..
 		"The scan runs from the Prices tab of Craftonomics' window at the auction house (/craftonomics prices).")
 	checkbox("autoScan", "Scan when I open the auction house",
 		"Craftonomics' own price scan starts by itself when you open the auction house.\n\n" ..
@@ -277,6 +296,11 @@ function Options.Create()
 		"the materials, and a Disenchant advantage line when that's more than selling it makes.\n\n" ..
 		"The value comes from TSM or Auctionator, whichever your prices come from. Without either, or when they " ..
 		"can't price what the item disenchants into, the lines don't show.")
+	checkbox("panelExpectedDeposit", "Show expected AH deposit",
+		"Under Market details: an estimate of the auction house deposit lost across relistings before the item sells, " ..
+		"for the duration picked on the Sell tab (or the longest when none is picked). Since the final sale refunds " ..
+		"its deposit, an item with a 33% sale rate loses about twice a single listing's deposit on average.\n\n" ..
+		"Uses TSM's sale rate or your own personal sale rate (once you have at least 3 finished auctions).")
 
 	header("Look")
 	local scaleOptions = Settings.CreateSliderOptions(0.6, 1.5, 0.05)
@@ -297,6 +321,17 @@ function Options.Create()
 		db.pos = nil
 		ns.Panel.Place()
 	end, "Put the panel back next to the profession window.")
+
+	header("Best crafts window")
+	local bestFontOptions = Settings.CreateSliderOptions(12, 20, 1)
+	bestFontOptions:SetLabelFormatter(MinimalSliderWithSteppersMixin.Label.Right, function(value)
+		return format("%d pt", math.floor(value + 0.5))
+	end)
+	control("Slider", setting("bestFontSize", Settings.VarType.Number, "Best crafts text size"), bestFontOptions,
+		"Text size inside the Best crafts window (from 12pt to 20pt). Also adjustable directly inside the window.")
+	button("Best crafts window", "Reset", function()
+		if ns.BestCraftsList and ns.BestCraftsList.ResetLayout then ns.BestCraftsList.ResetLayout() end
+	end, "Reset the Best crafts window back to its default size and centered position.")
 
 	if quality then
 		header("Procs and session total")
@@ -373,7 +408,7 @@ function Options.Create()
 			"Auctionator's own tabs stay on the auction house whatever you pick.")
 		allSetting = master
 	end) end
-	if hasAuctionator or ns.Prices.HasTSM() then
+	if hasAuctionator or ns.Prices.TSMInstalled() then
 		dropdown("listAddon", ns.LIST_ADDON_LABEL, function()
 			local list = {}
 			for _, choice in ipairs(ns.LIST_ADDON_CHOICES) do
@@ -381,7 +416,7 @@ function Options.Create()
 				if key == "auctionator" then
 					offered = hasAuctionator
 				elseif key == "tsm" then
-					offered = ns.Prices.HasTSM()
+					offered = ns.Prices.TSMInstalled()
 				elseif not hasAuctionator and db.listAddon ~= "tsm" then
 					-- Without Auctionator, a saved "Auctionator" means Craftonomics' list:
 					-- this row keeps the saved value, so it comes back with Auctionator.
@@ -393,7 +428,7 @@ function Options.Create()
 		end,
 			(hasAuctionator and "Auctionator: missing materials go to Auctionator's shopping list.\n\n" or "") ..
 			"Craftonomics: they go to Craftonomics' own shopping list, on the Shopping list tab of its window.\n\n" ..
-			(ns.Prices.HasTSM() and "TSM search to copy: they become a search to paste into TSM's Shopping tab.\n\n" or "") ..
+			(ns.Prices.TSMInstalled() and "TSM search to copy: they become a search to paste into TSM's Shopping tab.\n\n" or "") ..
 			"You can also switch it at the bottom of the Shopping list menus.")
 	end
 	if hasAuctionator then
@@ -524,35 +559,54 @@ function Options.Create()
 		"On item tooltips: what the item sells for on the auction house, with the price you picked (the TSM " ..
 		"price for crafted items on the main page, or Auctionator's). For a stack in your bags, hold Shift to " ..
 		"also see what the whole stack sells for.\n\nNot on items you can't post, like soulbound ones.")
+	checkbox("tipMarketValue", "Show market value",
+		"On item tooltips: Market Value, the item's 14-day average price (with extreme outliers filtered out) from " ..
+		"Auctionator's or Craftonomics' scan history, when your auction price isn't already TSM's. For a stack in " ..
+		"your bags, hold Shift to also see the value of the whole stack.\n\n" ..
+		"Needs at least 2 days of scans (or 1 recent day backed by older history). Not on items you can't post.")
 	checkbox("tipCraftCost", "Show craft cost",
 		"On item tooltips: Craft Cost, what the materials to craft one of the item cost, even on characters " ..
 		"that don't have the profession. Follows your crafting strategy (" ..
 		(quality and "Highest rank, Use what I own or Cheapest materials" or "Buy missing, Craft myself or Cheapest way") ..
 		") and your Price addon. For a stack in your bags, hold Shift to also see the cost for the whole stack.\n\n" ..
 		"Not shown when one of the item's materials has no price.")
+	checkbox("tipCraftVsAH", "Show craft vs AH",
+		"On item tooltips: Craft vs AH, crafting profit (after the 5% auction house cut when enabled) as a share " ..
+		"of craft cost, with a hint:\n\n" ..
+		"Craft +27%: crafting and selling on the AH makes 27% over craft cost.\n" ..
+		"Buy -21%: crafting loses 21% compared to buying on the AH.\n" ..
+		"Even: within 3% of breaking even.\n\n" ..
+		"Not shown on items you can't post or when either price is missing.")
 	checkbox("tipDeposit", "Show AH deposit",
 		"On item tooltips: the auction house deposit for posting the item for " ..
 		(quality and "12, 24 or 48" or "2, 8 or 24") .. " hours, for one, or for the whole " ..
 		"stack in your bags while you hold Shift. You get it back when the item sells and lose it when it " ..
 		"doesn't, so a deposit near the price means it's hardly worth posting.\n\nNot on items you can't post, like soulbound ones.")
+	checkbox("tipExpectedDeposit", "Show expected AH deposit",
+		"On item tooltips: Expected Deposit, an estimate of the auction house deposits lost across relistings " ..
+		"before the item sells, for each duration. For example, at a 33% sale rate, selling takes about 3 " ..
+		"listings on average, losing 2 deposits since the final sale refunds its deposit.\n\n" ..
+		"Uses TSM's sale rate or your personal sale rate (once you have at least 3 finished auctions). Not on items you can't post.")
 	checkbox("tipSaleRate", "Show sale rate",
-		"On item tooltips, with TSM: TSM Sale Rate, the share of the item's auctions that sell" ..
-		(quality and ", across your region."
-			or ". On WoW Forever it counts every ruleset of your region together (Normal, PvP...), not just yours.") ..
+		"On item tooltips: TSM Sale Rate with TSM, or Your Sale Rate from your own last 60 days of sold and " ..
+		"expired auction mail (excluding cancellations)." ..
+		(quality and ""
+			or " With TSM on WoW Forever, it counts every ruleset of your region together (Normal, PvP...), not just yours.") ..
 		" A high rate means it sells; a low one that most auctions expire.\n\nNot on items you can't post, like soulbound ones.")
 	checkbox("tipTrend", "Show trend",
-		"On item tooltips, with TSM: TSM Trend, how far the item's market value" .. (quality and "" or " on your realm") ..
-		" is from its historical price. -20% means it's 20% below it, +14% that it's 14% above. It's the number " ..
-		"TSM's own tooltip shows beside its market value, whatever TSM price you picked for pricing.\n\n" ..
+		"On item tooltips: Trend (or TSM Trend when using TSM), how far the item's 14-day market value" ..
+		(quality and "" or " on your realm") ..
+		" is from its 60-day historical price. -20% means it's 20% below it, +14% that it's 14% above.\n\n" ..
+		"Uses TSM when loaded, or Auctionator's or Craftonomics' scan history (needs at least 3 days of scans).\n\n" ..
 		"Not on items you can't post, like soulbound ones.")
 	checkbox("tipLowest", "Show lowest vs market",
-		"On item tooltips, with TSM: TSM Lowest vs Market, how far the item's lowest auction" ..
+		"On item tooltips: Lowest vs Market (or TSM Lowest vs Market with TSM), how far the item's lowest auction" ..
 		(quality and "" or " on your realm") .. " is from its market value, with a hint:\n\n" ..
 		"Cheap -18%: the lowest auction is 18% below the market value.\n" ..
 		"Expensive +12%: it's 12% above it.\n" ..
 		"Even: within 3% of the market value.\n\n" ..
-		"With Freshest prices as your Price addon, the lowest auction is the newest one known. When that's " ..
-		"from a scan and not from TSM, the line is called Lowest vs TSM Market.\n\n" ..
+		"Uses TSM when loaded, or Auctionator's or Craftonomics' scan history. With Freshest prices and TSM, a " ..
+		"newer scan's lowest auction shows as Lowest vs TSM Market.\n\n" ..
 		"Only while someone has an auction up. Not on items you can't post, like soulbound ones.")
 	checkbox("tipBestCraft", "Show best craft",
 		"On the tooltip of a material: Best Craft, the most profitable recipe this character knows that takes it, " ..
@@ -563,10 +617,11 @@ function Options.Create()
 		"Recipes with no price for what they make, or for one of their materials, are left out. " ..
 		"The line only shows when that recipe makes a profit.")
 	checkbox("tipBestWeigh", "Weigh best craft by sale rate",
-		"With TSM: when the best craft is picked, a recipe's profit counts in full when what it makes has a TSM " ..
+		"When the best craft is picked, a recipe's profit counts in full when what it makes has a " ..
 		"sale rate of 70% or more, and for less below that, in proportion: at 35% it counts for half, at 7% for " ..
 		"a tenth. So a craft that sells well can beat one that makes more but rarely sells.\n\n" ..
-		"The Best Craft line still shows the craft's real profit. A recipe TSM has no sale rate for counts in " ..
+		"Uses TSM when loaded, or your personal sale rate once you have at least 3 finished auctions of the item. " ..
+		"The Best Craft line still shows the craft's real profit. An item with no sale rate counts in " ..
 		"full, and one with a sale rate of 0% is never the best craft.")
 	checkbox("tipBestReturn", "Weigh best craft by return",
 		"When the best craft is picked, a recipe's profit counts for more the higher its return (its profit as a " ..
@@ -587,7 +642,7 @@ function Options.Create()
 		{ "shift", "While holding Shift" },
 		{ "always", "Always" },
 		{ "never", "Never" },
-	}, "With TSM, under the Best Craft lines: the TSM sale rate of what the recipe makes.\n\n" ..
+	}, "Under the Best Craft and Recipe Profit lines: the sale rate of what the recipe makes (from TSM, or your own auction mail history).\n\n" ..
 		"While holding Shift: in your bags it shows as you press Shift; anywhere else, hold Shift first, then " ..
 		"hover the item.")
 	checkbox("tipRecipe", "Show recipe profit",
@@ -596,7 +651,7 @@ function Options.Create()
 		"you know the recipe.\n\n" ..
 		"It's priced as the All recipes window prices it: the materials bought and what the craft makes sold" ..
 		(quality and ", at the rank picked in that window" or "") .. ". " ..
-		"Its return and TSM sale rate show under it as Best craft's return and Best craft's sale rate say.\n\n" ..
+		"Its return and sale rate show under it as Best craft's return and Best craft's sale rate say.\n\n" ..
 		"Not on recipes with no price for what they make or for one of their materials, or that make an item " ..
 		"that's bound when picked up" .. (quality and "." or ", or on enchanting formulas: an enchant makes nothing to sell."))
 	checkbox("priceTooltip", "Show saved TSM prices",

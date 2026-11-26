@@ -31,9 +31,10 @@ local REFRESH_DELAY = 0.2   -- redraws are batched this long
 local PRICING = "Pricing every recipe... %d%%"
 local NO_PRICES = "None of these recipes' items or materials has a price yet.\nPrices: %s"
 local NO_MATCH = "Nothing matches the search and the filters."
-local NO_TREND = "The heatmap needs TSM on this character: its colors are TSM's trend, and its sizes "
-	.. "what TSM says sells in a day."
+local NO_TREND = "The heatmap needs TSM, or auction house price history from Auctionator or Craftonomics' scan "
+	.. "(at least 3 days of scans)."
 local NO_TILES = "TSM has no trend or no sales for any of these."
+local NO_TILES_HISTORY = "None of these have enough scan history or current listings yet (at least 3 days of scans are needed)."
 local VIEW_WIDTH = 210      -- the View dropdown: room for "Heatmap: crafted items"
 -- What the window can show (ns.db.recipesView).
 local VIEWS = {
@@ -72,14 +73,23 @@ local RANK_CHOICES = {
 	{ "highest", "Highest rank, best materials" },
 	{ "lowest", "Lowest rank, cheapest materials" },
 }
-local HEATMAP_HOW = "Every tile is an item: one the recipes make, or one of their materials. The search, the "
-	.. "profession and the filters decide which recipes count, as in the list.\n\n"
-	.. "Color: TSM's trend, how far the item's market value on your realm is from its historical price. Red is "
-	.. "below it, green above, strongest from 50%.\n\n"
-	.. "Size: the gold of the item sold in a day, which is TSM's sold per day times its market value."
-	.. (ns.QUALITY_CRAFTING and "" or " On WoW Forever TSM counts the sales of your whole region.")
-	.. "\n\nCrafted items are grouped by profession, materials by what kind of item they are. Items too small "
-	.. "for a tile of their own share one, and an item TSM lacks the trend or the sales of is left out."
+local function heatmapHow()
+	local tsm = ns.Prices.TrendSource() == "tsm"
+	return "Every tile is an item: one the recipes make, or one of their materials. The search, the "
+		.. "profession and the filters decide which recipes count, as in the list.\n\n"
+		.. "Color: " .. (tsm and "TSM's trend" or "the price trend") .. ", how far the item's market value"
+		.. (ns.QUALITY_CRAFTING and "" or " on your realm") .. " is from its historical price. Red is "
+		.. "below it, green above, strongest from 50%.\n\n"
+		.. (tsm
+			and ("Size: the gold of the item sold in a day, which is TSM's sold per day times its market value."
+				.. (ns.QUALITY_CRAFTING and "" or " On WoW Forever TSM counts the sales of your whole region.")
+				.. "\n\nCrafted items are grouped by profession, materials by what kind of item they are. Items too small "
+				.. "for a tile of their own share one, and an item TSM lacks the trend or the sales of is left out.")
+			or ("Size: the gold value currently listed on the auction house (how many are listed times market value).\n\n"
+				.. "Crafted items are grouped by profession, materials by what kind of item they are. Items too small "
+				.. "for a tile of their own share one, and an item without at least 3 days of scans or current listings "
+				.. "is left out."))
+end
 local EXPANSION_WIDTH = 190 -- the expansion dropdown: room for "Wrath of the Lich King"
 local RANK_WIDTH = 250      -- the rank dropdown: room for "Lowest rank, cheapest materials"
 
@@ -166,9 +176,16 @@ local COLUMNS = {
 	{ key = "gross", header = "Gross Profit", width = 104, sort = "gross", tip = grossTip,
 		text = function(row) return moneyOrDash(row.gross) end },
 	{ key = "net", header = "Net Profit", width = 104, sort = "net", tip = "Gross Profit minus Materials.", text = netText },
-	{ key = "saleRate", header = "TSM Sale Rate", width = 112, sort = "saleRate", shown = ns.Prices.HasSaleRate,
-		tip = "Of the auctions posted for this item, the share that sells, from TSM: a high rate means it sells, a "
-			.. "low one that most expire.",
+	{ key = "saleRate", width = 112, sort = "saleRate", shown = ns.Prices.HasSaleRate,
+		header = function() return ns.Prices.SaleRateSource() == "tsm" and "TSM Sale Rate" or "Your Sale Rate" end,
+		tip = function()
+			if ns.Prices.SaleRateSource() == "tsm" then
+				return "Of the auctions posted for this item, the share that sells, from TSM: a high rate means it sells, a "
+					.. "low one that most expire."
+			end
+			return "Of your finished auctions for this item over the last 60 days, the share that sold "
+				.. "(sold / (sold + expired), excluding cancelled auctions)."
+		end,
 		text = function(row) return row.saleRate and ns.Format.SaleRate(row.saleRate) or Color("muted", "-") end },
 	{ key = "soldPerDay", header = "Sold per Day", width = 104, sort = "soldPerDay", shown = ns.Prices.HasTSM,
 		tip = "How many of this item sell in a day, on average, from TSM.", text = soldText },
@@ -334,7 +351,13 @@ local function showRowTooltip(button)
 	addPair("Gross Profit", Money(row.gross))
 	addPair("Net Profit", netText(row))
 	if ns.Prices.HasSaleRate() then
-		addPair("TSM Sale Rate", row.saleRate and ns.Format.SaleRate(row.saleRate) or Color("muted", "-"))
+		local tsm = (row.saleRateFrom or ns.Prices.SaleRateSource()) == "tsm"
+		local label = tsm and "TSM Sale Rate" or "Your Sale Rate"
+		local value = row.saleRate and ns.Format.SaleRate(row.saleRate) or Color("muted", "-")
+		if row.saleRate and not tsm and row.saleRateSold and row.saleRateTotal then
+			value = value .. " " .. Color("muted", format("(%d/%d)", row.saleRateSold, row.saleRateTotal))
+		end
+		addPair(label, value)
 	end
 	if ns.Prices.HasTSM() then addPair("Sold per Day", soldText(row)) end
 	GameTooltip:Show()
@@ -392,7 +415,7 @@ local function showHeaderTip(header)
 	local column = header.column
 	if not column then return end
 	GameTooltip:SetOwner(header, "ANCHOR_TOP")
-	GameTooltip:SetText(column.header)
+	GameTooltip:SetText(type(column.header) == "function" and column.header() or column.header)
 	GameTooltip:AddLine(type(column.tip) == "function" and column.tip() or column.tip, 1, 1, 1, true)
 	GameTooltip:AddLine("Click to sort; click again to reverse.", 0.6, 0.6, 0.6)
 	GameTooltip:AddLine(format("Shift-click: sort by this next, up to %d columns", MAX_SORTS), 0.6, 0.6, 0.6)
@@ -434,8 +457,9 @@ local function drawHeaders()
 		header.column = column
 		header.text:SetJustifyH(left and "LEFT" or "RIGHT")
 		-- A sorted column's name is in the color of its place in the sort, with an arrow.
+		local title = type(column.header) == "function" and column.header() or column.header
 		local place, order = sortPlace(column.key)
-		header.text:SetText(order and Color(SORT_COLORS[place], column.header) or column.header)
+		header.text:SetText(order and Color(SORT_COLORS[place], title) or title)
 		header.arrow:SetShown(order ~= nil)
 		if order then
 			if order.ascending then header.arrow:SetTexCoord(0, 1, 1, 0) else header.arrow:SetTexCoord(0, 1, 0, 1) end
@@ -493,9 +517,12 @@ local function inView(rows)
 	return list, unpriced, anyPrice
 end
 
--- What TSM would add, for the footer; nil with TSM loaded.
+-- What TSM would add, for the footer; nil when TSM provides sale rate & sales.
 local function tsmNote()
-	if ns.Prices.HasSaleRate() then return end
+	if ns.Prices.SaleRateSource() == "tsm" then return end
+	if ns.Prices.HasSaleRate() then
+		return ns.Prices.HasTSM() and "TSM Sale Rate needs TSM on this character" or "Sold per Day needs TSM"
+	end
 	if ns.Prices.HasTSM() then return "TSM Sale Rate needs TSM on this character" end
 	return "TSM Sale Rate and Sold per Day need TSM"
 end
@@ -537,17 +564,21 @@ local function renderHeatmap(list, view, anyPrice)
 		return showInstead(NO_TREND)
 	end
 	if not heatmap then createHeatmap() end
+	local tsm = ns.Prices.TrendSource() == "tsm"
 	local shown, left = ns.Heatmap.Draw(list, view)
 	local parts = { format("%s %s", BreakUpLargeNumbers(shown), view == "materials" and "materials" or "items") }
-	if left > 0 then parts[#parts + 1] = format("%s more have no TSM trend or sales", BreakUpLargeNumbers(left)) end
-	parts[#parts + 1] = "Size: gold sold per day"
+	if left > 0 then
+		parts[#parts + 1] = format(tsm and "%s more have no TSM trend or sales" or "%s more need more scan history or listings",
+			BreakUpLargeNumbers(left))
+	end
+	parts[#parts + 1] = tsm and "Size: gold sold per day" or "Size: listed value on the auction house"
 	footer:SetText(Color("muted", table.concat(parts, " · ")))
 	if shown > 0 then
 		empty:Hide()
 	elseif #list == 0 then
 		showInstead(anyPrice and NO_MATCH or format(NO_PRICES, ns.Prices.SourceLabel()))
 	else
-		showInstead(NO_TILES)
+		showInstead(tsm and NO_TILES or NO_TILES_HISTORY)
 	end
 end
 
@@ -689,7 +720,7 @@ local function showNote(self)
 		GameTooltip:AddLine(HOW, 1, 1, 1, true)
 	else
 		GameTooltip:SetText("How to read the heatmap")
-		GameTooltip:AddLine(HEATMAP_HOW, 1, 1, 1, true)
+		GameTooltip:AddLine(heatmapHow(), 1, 1, 1, true)
 	end
 	GameTooltip:Show()
 end
@@ -721,6 +752,9 @@ drawFilters = function()
 	local count = filtersOn()
 	filtersButton:SetText(count > 0 and format("Filters (%d)", count) or "Filters")
 	local rated = ns.Prices.HasSaleRate()
+	if rateParts[1] then
+		rateParts[1]:SetText(ns.Prices.SaleRateSource() == "tsm" and "TSM Sale Rate" or "Your Sale Rate")
+	end
 	for _, part in ipairs(rateParts) do part:SetShown(rated) end
 	filtersBox:SetHeight(rated and FILTERS_HEIGHT or FILTERS_HEIGHT - FILTER_LINE)
 end
@@ -828,15 +862,15 @@ end
 local function createRateFilters()
 	local rateLabel = filterText("TSM Sale Rate")
 	rateLabel:SetPoint("TOPLEFT", FILTERS_PAD, -FILTERS_PAD - 2 * FILTER_LINE - 5)
-	rateMinBox = createFilterBox(RATE_BOX_WIDTH, 3, "Lowest TSM Sale Rate",
-		"Lists only the recipes whose item's TSM Sale Rate is at least this, in percent. Empty for any. An item "
+	rateMinBox = createFilterBox(RATE_BOX_WIDTH, 3, "Lowest Sale Rate",
+		"Lists only the recipes whose item's Sale Rate is at least this, in percent. Empty for any. An item "
 			.. "with no sale rate is left out while either box has a number.",
 		function() ns.db.recipesRateMin = tonumber(rateMinBox:GetText()) or false end)
 	rateMinBox:SetPoint("LEFT", filtersBox, "TOPLEFT", FILTER_BOX_X, -FILTERS_PAD - 2 * FILTER_LINE - 11)
 	local toText = filterText("to")
 	toText:SetPoint("LEFT", rateMinBox, "RIGHT", 6, 0)
-	rateMaxBox = createFilterBox(RATE_BOX_WIDTH, 3, "Highest TSM Sale Rate",
-		"Lists only the recipes whose item's TSM Sale Rate is at most this, in percent. Empty for any. An item "
+	rateMaxBox = createFilterBox(RATE_BOX_WIDTH, 3, "Highest Sale Rate",
+		"Lists only the recipes whose item's Sale Rate is at most this, in percent. Empty for any. An item "
 			.. "with no sale rate is left out while either box has a number.",
 		function() ns.db.recipesRateMax = tonumber(rateMaxBox:GetText()) or false end)
 	rateMaxBox:SetPoint("LEFT", toText, "RIGHT", 12, 0)

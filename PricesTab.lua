@@ -71,7 +71,10 @@ local function refresh()
 	sourceText:SetText(source)
 
 	local seconds = ns.PriceScan.Seconds()
-	lastText:SetText(seconds and format("Last scan: %s, %s items.", ago(seconds), BreakUpLargeNumbers(ns.PriceScan.Count()))
+	local histDays = ns.PriceScan.HistoryDays and ns.PriceScan.HistoryDays() or 0
+	local histText = histDays > 0 and format(" (%d %s of history)", histDays, histDays == 1 and "day" or "days") or ""
+	lastText:SetText(seconds and format("Last scan: %s, %s items%s.", ago(seconds),
+		BreakUpLargeNumbers(ns.PriceScan.Count()), histText)
 		or "The auction house hasn't been scanned yet.")
 
 	local state, message = ns.PriceScan.State()

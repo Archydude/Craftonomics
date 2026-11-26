@@ -34,12 +34,13 @@ local CLICK_HINT = "Click a group to see only its items."
 -- The colors a trend runs through: red at -50% or less, grey-blue at 0%, green at +50% or more.
 local FALLING, FLAT, RISING = { 0.80, 0.20, 0.20 }, { 0.20, 0.22, 0.27 }, { 0.20, 0.72, 0.28 }
 
-local frame, map, backButton, where
+local frame, map, backButton, where, keyTitle
 local changed          -- called when a click changes what the map shows
 local mapWidth, mapHeight
 local tiles, headers = {}, {} -- the tiles' and the groups' names' buttons, reused
 local kind             -- "crafted" or "materials": what the map last showed
 local zoom             -- the name of the group shown alone, or nil for all of them
+local useSales = false -- true when sizing by TSM's Sold per Day, false when sizing by Listed value
 -- Shown alone, a group's "more" tile opens on the items it stands for: how many of
 -- the group's biggest are left out, for each time one was opened.
 local skips = {}
@@ -124,24 +125,33 @@ local function heavier(a, b)
 	return a.name < b.name
 end
 
--- One item for the map, or nil when TSM lacks its trend or its sales: { itemID,
--- name, group = its group's name, weight = the gold of it sold in a day, trend (in
--- percent, not rounded), market, historical, soldPerDay, saleRate (nil when TSM has none) }.
-local function entryOf(itemID, name, group, market, historical, soldPerDay, saleRate)
-	if not (market and historical and soldPerDay and soldPerDay > 0) then return end
-	return { itemID = itemID, name = name, group = group, weight = soldPerDay * market,
+-- One item for the map, or nil when trend/size data is missing: { itemID,
+-- name, group = its group's name, weight = gold sold/day (with TSM) or listed value,
+-- trend (in percent, not rounded), market, historical, soldPerDay, saleRate, listed }.
+local function entryOf(itemID, name, group, market, historical, soldPerDay, saleRate, listed, salesMode)
+	if not (market and historical) then return end
+	local weight
+	if salesMode then
+		if not (soldPerDay and soldPerDay > 0) then return end
+		weight = soldPerDay * market
+	else
+		if not (listed and listed > 0) then return end
+		weight = listed * market
+	end
+	return { itemID = itemID, name = name, group = group, weight = weight,
 		trend = (market - historical) * 100 / historical,
-		market = market, historical = historical, soldPerDay = soldPerDay, saleRate = saleRate }
+		market = market, historical = historical, soldPerDay = soldPerDay, saleRate = saleRate, listed = listed }
 end
 
 -- The items the recipes make, each once, in its profession's group, and how many
--- more TSM lacks the trend or the sales of.
+-- more lack trend or size data.
 local function craftedEntries(rows)
 	local list, seen, left = {}, {}, 0
 	for _, row in ipairs(rows) do
 		if row.itemID and not seen[row.link] then
 			seen[row.link] = true
-			local entry = entryOf(row.itemID, row.name, row.profession, row.market, row.historical, row.soldPerDay, row.saleRate)
+			local entry = entryOf(row.itemID, row.name, row.profession, row.market, row.historical, row.soldPerDay,
+				row.saleRate, row.listed, useSales)
 			if entry then
 				entry.row = row
 				list[#list + 1] = entry
@@ -154,8 +164,8 @@ local function craftedEntries(rows)
 end
 
 -- The materials the recipes take, each once, grouped by what kind of item the
--- game says it is (Metal & Stone, Herb, Cloth...), and how many more TSM lacks the
--- trend or the sales of.
+-- game says it is (Metal & Stone, Herb, Cloth...), and how many more lack trend
+-- or size data.
 local function materialEntries(rows)
 	local list, seen, left = {}, {}, 0
 	for _, row in ipairs(rows) do
@@ -166,7 +176,8 @@ local function materialEntries(rows)
 				local info = ns.AllRecipes.Material(itemID)
 				local group = select(3, C_Item.GetItemInfoInstant(itemID))
 				local entry = info and entryOf(itemID, ns.Format.ItemName(itemID) or "...",
-					group and group ~= "" and group or "Other", info.market, info.historical, info.soldPerDay, info.saleRate)
+					group and group ~= "" and group or "Other", info.market, info.historical, info.soldPerDay,
+					info.saleRate, info.listed, useSales)
 				if entry then list[#list + 1] = entry else left = left + 1 end
 			end
 		end
@@ -224,16 +235,21 @@ local function addHint(text)
 	GameTooltip:AddLine(text, 0.6, 0.6, 0.6)
 end
 
--- The trend and the gold sold a day, of an item, a group or a "more" tile.
+-- The trend and size metric (gold sold a day or listed value), of an item, a group or a "more" tile.
 local function addNumbers(of)
-	addPair("TSM Trend", ns.Format.Trend(math.floor(of.trend + 0.5)))
+	addPair(useSales and "TSM Trend" or "Trend", ns.Format.Trend(math.floor(of.trend + 0.5)))
 	if of.market then
 		addPair("Market Value", Money(of.market))
 		addPair("Historical Price", Money(of.historical))
-		addPair("Sold per Day", ns.Format.SoldPerDay(of.soldPerDay))
-		if of.saleRate then addPair("TSM Sale Rate", ns.Format.SaleRate(of.saleRate)) end
+		if useSales then
+			addPair("Sold per Day", ns.Format.SoldPerDay(of.soldPerDay))
+			if of.saleRate then addPair("TSM Sale Rate", ns.Format.SaleRate(of.saleRate)) end
+		elseif of.listed then
+			addPair("Listed", BreakUpLargeNumbers(of.listed))
+			if of.saleRate then addPair("Your Sale Rate", ns.Format.SaleRate(of.saleRate)) end
+		end
 	end
-	addPair("Gold sold per Day", Money(of.weight))
+	addPair(useSales and "Gold sold per Day" or "Listed value", Money(of.weight))
 end
 
 local function showTip(button)
@@ -513,6 +529,8 @@ end
 -- Returns how many items it shows, and how many more TSM lacks the trend or the
 -- sales of. With none to show the map hides.
 function Heatmap.Draw(rows, what)
+	useSales = ns.Prices.TrendSource() == "tsm"
+	if keyTitle then keyTitle:SetText(Color("muted", useSales and "TSM Trend" or "Price Trend")) end
 	if what ~= kind then
 		kind, zoom = what, nil
 		wipe(skips)
@@ -581,9 +599,9 @@ local function createKey()
 	local first = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
 	first:SetPoint("RIGHT", after, "LEFT", -6, 0)
 	first:SetText(percentText(KEY_STEPS[1]))
-	local title = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-	title:SetPoint("RIGHT", first, "LEFT", -10, 0)
-	title:SetText(Color("muted", "TSM Trend"))
+	keyTitle = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+	keyTitle:SetPoint("RIGHT", first, "LEFT", -10, 0)
+	keyTitle:SetText(Color("muted", "TSM Trend"))
 end
 
 -- Makes the map, `width` by `height` with its line above, as a child of `parent`

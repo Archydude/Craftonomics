@@ -308,7 +308,8 @@ end
 -- of a sale the auction house leaves you.
 local function priceRow(row, buy, keep)
 	row.each, row.gross, row.cost, row.net, row.saleRate, row.soldPerDay = nil, nil, nil, nil, nil, nil
-	row.market, row.historical = nil, nil
+	row.saleRateFrom, row.saleRateSold, row.saleRateTotal = nil, nil, nil
+	row.market, row.historical, row.listed = nil, nil, nil
 	-- An enchant makes nothing to sell: only its materials have a price.
 	if row.enchant then return priceMaterials(row, buy) end
 	-- The item's own name, once the game has loaded it. Some prices need the item
@@ -321,12 +322,15 @@ local function priceRow(row, buy, keep)
 	priceMaterials(row, buy)
 	row.gross = row.each * row.made * keep
 	row.net = row.cost and row.gross - row.cost
-	row.saleRate = ns.Prices.SaleRate(row.link)
+	row.saleRate, row.saleRateFrom, row.saleRateSold, row.saleRateTotal = ns.Prices.SaleRate(row.link, row.itemID)
 	row.soldPerDay = ns.Prices.SoldPerDay(row.link)
-	row.market, row.historical = ns.Prices.MarketAndHistorical(row.link)
+	row.market, row.historical = ns.Prices.MarketAndHistorical(row.link, row.itemID)
+	if not row.soldPerDay and ns.Prices.HasTrend() then
+		row.listed = ns.Prices.Listed(row.link)
+	end
 end
 
--- Asks TSM about every material of the recipes, each once (see `materials`).
+-- Asks TSM or scan history about every material of the recipes, each once (see `materials`).
 local function priceMaterialItems()
 	if not ns.Prices.HasTrend() then return end
 	local list = {}
@@ -335,10 +339,14 @@ local function priceMaterialItems()
 			local itemID = material.itemID
 			if list[itemID] == nil then
 				local link = "item:" .. itemID
-				local market, historical = ns.Prices.MarketAndHistorical(link)
+				local market, historical = ns.Prices.MarketAndHistorical(link, itemID)
+				local soldPerDay = ns.Prices.SoldPerDay(link)
+				local listed = (not soldPerDay and historical) and ns.Prices.Listed(link) or nil
+				local saleRate, saleRateFrom, saleRateSold, saleRateTotal = ns.Prices.SaleRate(link, itemID)
 				list[itemID] = historical
 					and { itemID = itemID, market = market, historical = historical,
-						soldPerDay = ns.Prices.SoldPerDay(link), saleRate = ns.Prices.SaleRate(link) }
+						soldPerDay = soldPerDay, saleRate = saleRate, saleRateFrom = saleRateFrom,
+						saleRateSold = saleRateSold, saleRateTotal = saleRateTotal, listed = listed }
 					or false
 				pauseIfDue()
 			end

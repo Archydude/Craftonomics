@@ -31,36 +31,31 @@ Profit or loss on every craft, which recipes are worth making, and its own aucti
 ```markdown
 ## Is this craft worth it?
 
-Craftonomics, formerly **Craft Profit**, answers in gold: **profit or loss?** A panel next to your profession window prices every craft and crafting order. On **Retail** and **WoW Forever**.
+Craftonomics answers in gold: **profit or loss?** A panel next to your profession window prices every craft and crafting order on **Retail** and **WoW Forever**.
 
-- **Expected profit** on every craft, procs included, and its **return** on the materials' cost
-- **Best crafts**: every recipe ranked by profit, across all your characters
-- **Profit on every recipe** in the game's own recipe list
-- **All recipes**: every profession's recipes, as a list or a **trend heatmap**
-- **Ledger**: your profit so far, and where every craft went
-- **Auction house window**: shopping list, selling, cancelling undercut auctions
-- **No price addon needed**: its own price scan, **TradeSkillMaster** or **Auctionator** prices, or whichever is **freshest**
-- **Patron orders**: profit, rewards (with learned patron bag and Moxie values), and missing materials in Blizzard's Patron tab, crafted from there
+- **Expected profit** with procs, **return** on materials, and **break-even price**
+- **Best crafts**: movable, resizable window (`12pt`–`20pt` text) ranking every recipe across your characters
+- **Profit on every recipe** in Blizzard's recipe list
+- **All recipes**: every profession's recipes as a list or **trend heatmap**
+- **Ledger**: crafted profit, posted auctions, and where crafts went
+- **Auction house window**: shopping list, selling, and undercut cancelling
+- **Works alone or with addons**: own 60-day price scan & 60-day mailbox sale rate, **TradeSkillMaster**, **Auctionator**, or **freshest** prices
+- **Patron orders**: order profits, knowledge & learned bag/Moxie values, and missing materials crafted straight from Blizzard's tab
 
-### Crafts and orders
-The sale price at the rank you'll get, minus the 5% cut and your materials, plus the item's **break-even price** (plain and with procs). On orders: the commission, minus the materials **you** supply, plus sellable rewards (and optionally learned values for patron bags and Moxie). The **concentration strategy** picks lowest cost, least concentration or most **gold per point** within your crafting strategy. High **AH deposits** show a warning; weapons and armor show **disenchant value**. **Craft** and **Max** buttons craft from the panel.
+### Crafts, orders, and Best crafts
+Sale price minus the 5% cut and materials, plus **break-even**, **concentration strategy**, **disenchant value**, high/expected **AH deposit** indicators, and **Craft**/**Max** buttons. **Best crafts** tracks **Return**, **Can craft now**, **Sale rate**, and **Trend** from TSM or in-game scans/mail.
 
-### What should I craft?
-**Best crafts** has a **Return** column, an independent **Can craft now** filter, and with TSM each item's **sale rate** and **trend**.
-
-With TSM, switch **All recipes** to a **heatmap**: tiles colored by trend, sized by gold sold per day.
-
-### At the auction house
-**Shopping list**: click a material to see how many to buy. **Sell**: a price and sale rate on every bag item. **My auctions**: cancel the undercut ones.
+### All recipes & Auction house
+**All recipes** includes a **trend heatmap** sized by daily gold sold (TSM) or listed value (Auctionator / own scan). **Shopping list** adds missing reagents; **Sell** shows prices and sale rates; **My auctions** cancels undercuts.
 
 ### WoW Forever
-Best crafts shows what a **skill point** costs. Materials in your **bank** are marked on the panel. **Craft myself** prices materials at what crafting them costs, and **Cheapest way** crafts or buys each, whichever is cheaper.
+Best crafts tracks **skill-up** cost; materials in your **bank** show on the panel; **Craft myself** and **Cheapest way** price intermediate crafts.
 
 ### Item tooltips
-Vendor, auction and **craft cost** prices (even without the profession), the **AH deposit**, and with TSM the **sale rate**, **trend** and whether the lowest auction is **cheap** or **expensive**. Materials show the **best craft** they lead to, recipes the **profit** of the craft they teach.
+Vendor, auction, **market value**, **craft cost** (even without the profession), **Craft vs AH** (**Craft**/**Buy**/% profit), **AH deposit** (plus optional **Expected Deposit**), **sale rate**, **trend**, **cheap**/**expensive**, **best craft**, and **recipe profit**.
 
 ### Good to know
-**TSM prices for alts** that keep TSM turned off. **Hoard Value** can value your items with Craftonomics' prices. Type **/craftonomics** for options.
+**TSM prices for alts** without loading TSM. **Hoard Value** can read Craftonomics' prices. Type **/craftonomics** for options.
 
 This addon was made with AI.
 
@@ -74,18 +69,26 @@ This addon was made with AI.
 ## B. Upload File form
 
 **Files:** two, each uploaded with only its own game versions (why is in [UPLOADING.md](../UPLOADING.md)). The display name, release type and changelog are the same for both.
-- `dist\Craftonomics-5.17.0-retail.zip`: Retail `12.1.5`
-- `dist\Craftonomics-5.17.0-forever.zip`: WoW Forever `1.60.1`
+- `dist\Craftonomics-5.18.0-retail.zip`: Retail `12.1.5`
+- `dist\Craftonomics-5.18.0-forever.zip`: WoW Forever `1.60.1`
 
 **Display name**
 ```
-Craftonomics 5.17.0
+Craftonomics 5.18.0
 ```
 
 **Release type:** `Release`
 
 **Changelog** (paste only the newest part; paste older parts too if they never went up)
 ```markdown
+5.18.0
+- **Standalone, resizable Best crafts window and text size:** Best crafts now opens in its own movable, resizable window alongside your crafting window so you can browse recipes side by side. Drag its bottom-right corner to resize it, pick your **Text size** (`12pt`–`20pt`) inside the window or in Panel options so item names aren't clipped, and use **Reset** in Panel options to restore the default size and position.
+- **Market Value, Trend, Lowest vs Market and Heatmap without TSM:** Craftonomics' scan now keeps 60 days of daily prices and reads **Auctionator** scan history too, bringing 14-day **Market Value** (with extreme outliers filtered out), **Trend**, **Lowest vs Market**, and a listed-value **Heatmap** even when you don't use TSM.
+- **Your Sale Rate (without TSM):** Craftonomics now tracks your 60-day personal sale rate (`sold / (sold + expired)`) automatically from sold and expired auction house mail (excluding cancellations, and stored separately so clearing the Ledger keeps it). **Your Sale Rate** appears on item tooltips, the crafting panel, Best crafts, All recipes, the Sell tab, and the Heatmap, and works with **Weigh best craft by sale rate** once you have at least 3 finished auctions.
+- **Price addon controls metrics & Freshest prices:** **Price addon** now controls which addon supplies **Market Value**, **Trend**, **Lowest vs Market**, **Sale Rate**, **Sold per Day**, and the **Heatmap**, even when TSM is loaded. Picking **Freshest prices** automatically sets both TSM price types to **Lowest auction right now** so live scans and TSM match cleanly.
+- **Craft vs AH on item tooltips:** shows your crafting profit (after the 5% auction house cut when enabled) as a share of craft cost — **Craft +27%** in green when crafting profits, **Buy -21%** in light blue when crafting loses gold, or **Even** within 3%. Turn it off with **Show craft vs AH** on the Tooltips options page.
+- **Expected AH deposit (optional):** new **Show expected AH deposit** options on the Tooltips and Panel pages (off by default) estimate the auction house deposits lost across relistings based on TSM's or your personal sale rate (once you have 3+ finished auctions), since the final sale refunds its deposit.
+
 5.17.0
 - **Craft cost on item tooltips:** hovering any craftable item now shows **Craft Cost**, what the materials to craft one of it cost, right under the auction house price so you can compare crafting against buying at a glance — even on characters without that profession (such as gatherers). It follows your **Crafting strategy** (**Buy missing**, **Craft myself** or **Cheapest way** on WoW Forever; **Highest rank**, **Use what I own** or **Cheapest materials** on Retail) and your **Price addon** (TSM, Auctionator or Craftonomics' scan). Hold **Shift** over a stack in your bags to see the craft cost for the whole stack. Turn it off with **Show craft cost** on the Tooltips options page.
 

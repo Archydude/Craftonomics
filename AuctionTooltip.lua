@@ -103,10 +103,10 @@ local function unsellable(itemID, link, location, data)
 	return bind ~= nil and UNSELLABLE_BINDS[bind] == true
 end
 
--- The deposit for `qty` at each duration, or nil when the game won't say.
+-- The raw deposit in copper for `qty` at each duration, or nil when the game won't say.
 -- An item in your bags asks as that item; otherwise by its itemID, as the
 -- auction house does for stackable goods.
-local function deposits(itemID, location, qty)
+local function rawDeposits(itemID, location, qty)
 	local list = {}
 	for duration = 1, #DURATIONS do
 		local ok, deposit
@@ -117,8 +117,14 @@ local function deposits(itemID, location, qty)
 			ok, deposit = pcall(C_AuctionHouse.CalculateCommodityDeposit, itemID, duration, qty)
 		end
 		if not (ok and type(deposit) == "number") then return end
-		list[duration] = money(deposit)
+		list[duration] = deposit
 	end
+	return list
+end
+
+local function formatDeposits(raw)
+	local list = {}
+	for duration = 1, #raw do list[duration] = money(raw[duration]) end
 	return list
 end
 
@@ -173,8 +179,9 @@ local RECIPE_CLASS = Enum.ItemClass and Enum.ItemClass.Recipe or 9
 local function onItem(tooltip, data)
 	local db = ns.db
 	if not db or not C_AuctionHouse then return end
-	if not (db.tipVendorBuy or db.tipVendorSell or db.tipAuction or db.tipCraftCost or db.tipDeposit or db.tipSaleRate
-		or db.tipTrend or db.tipLowest or db.tipBestCraft or db.tipRecipe) then
+	if not (db.tipVendorBuy or db.tipVendorSell or db.tipAuction or db.tipMarketValue or db.tipCraftCost
+		or db.tipCraftVsAH or db.tipDeposit or db.tipExpectedDeposit or db.tipSaleRate or db.tipTrend
+		or db.tipLowest or db.tipBestCraft or db.tipRecipe) then
 		return
 	end
 	local itemID = data and data.id
@@ -205,23 +212,52 @@ local function onItem(tooltip, data)
 	local vendorBuy = db.tipVendorBuy and ns.Prices.Vendor(itemID) or nil
 	local vendorSell = db.tipVendorSell and select(11, C_Item.GetItemInfo(link or itemID)) or nil
 	if vendorSell and vendorSell <= 0 then vendorSell = nil end
+	local itemKey = link or ("item:" .. itemID)
 	-- Saved TSM prices already have their own line (Show saved TSM prices).
-	local price, from
-	if postable and db.tipAuction then price, from = ns.Prices.SaleFrom(link or ("item:" .. itemID), itemID) end
-	if from == "saved" then price = nil end
-	local craftCost = db.tipCraftCost and ns.AllRecipes and ns.AllRecipes.CraftCost and ns.AllRecipes.CraftCost(itemID) or nil
-	local list = postable and db.tipDeposit and deposits(itemID, location, qty) or nil
-	-- The share of its auctions that sell, from TSM (nil without TSM).
-	local rate = postable and db.tipSaleRate and ns.Prices.SaleRate(link or ("item:" .. itemID)) or nil
-	-- How far its market value is from its historical price, from TSM (nil without TSM).
-	local trend
-	if postable and db.tipTrend then trend = ns.Prices.Trend(link or ("item:" .. itemID)) end
-	-- How far its lowest auction is from TSM's market value (nil without TSM, or
-	-- with no auction up), and whose lowest auction that is: TSM's, or a scan's
-	-- with Freshest prices.
-	local lowest, lowestFrom
+	local ahPrice, from
+	if postable and (db.tipAuction or db.tipCraftVsAH) then ahPrice, from = ns.Prices.SaleFrom(itemKey, itemID) end
+	local price = (db.tipAuction and from ~= "saved") and ahPrice or nil
+	local marketValue, marketFrom
+	if postable and db.tipMarketValue then
+		marketValue, marketFrom = ns.Prices.MarketValue(itemKey, itemID)
+		if marketFrom == "tsm" and price and from == "tsm" then marketValue = nil end
+	end
+	local craftCost = (db.tipCraftCost or db.tipCraftVsAH) and ns.AllRecipes and ns.AllRecipes.CraftCost
+		and ns.AllRecipes.CraftCost(itemID) or nil
+	local showCraftCost = db.tipCraftCost and craftCost or nil
+	local craftVsAH
+	if postable and db.tipCraftVsAH and craftCost and craftCost > 0 and ahPrice and ahPrice > 0 then
+		local netAH = db.ahCut and (ahPrice * (1 - ns.AH_CUT)) or ahPrice
+		craftVsAH = math.floor((netAH - craftCost) * 100 / craftCost + 0.5)
+	end
+	local rawDeps = postable and (db.tipDeposit or db.tipExpectedDeposit) and rawDeposits(itemID, location, qty) or nil
+	local list = db.tipDeposit and rawDeps and formatDeposits(rawDeps) or nil
+	-- The share of its auctions that sell, from TSM or your own auction mail history.
+	local rate, rateFrom, rateSold, rateTotal
+	if postable and (db.tipSaleRate or db.tipExpectedDeposit) then
+		rate, rateFrom, rateSold, rateTotal = ns.Prices.SaleRate(itemKey, itemID)
+	end
+	local showRate = db.tipSaleRate and rate or nil
+	local expectedDepositText
+	if postable and db.tipExpectedDeposit and rawDeps and rate and rate > 0 and ns.Prices.ExpectedDeposit then
+		local minSamples = ns.Sales and ns.Sales.MIN_DECISION_SAMPLES or 3
+		if rateFrom == "tsm" or (rateTotal or 0) >= minSamples then
+			if rate >= 1 then
+				expectedDepositText = ns.Color("muted", "None (100%)")
+			else
+				local parts = {}
+				for i = 1, #rawDeps do parts[i] = money(ns.Prices.ExpectedDeposit(rawDeps[i], rate)) end
+				expectedDepositText = table.concat(parts, " / ")
+			end
+		end
+	end
+	-- How far its market value is from its historical price, from TSM or scan history.
+	local trend, trendFrom
+	if postable and db.tipTrend then trend, trendFrom = ns.Prices.Trend(itemKey, itemID) end
+	-- How far its lowest auction is from its market value, and whose lowest/market prices are used.
+	local lowest, lowestFrom, lowestMarketFrom
 	if postable and db.tipLowest then
-		lowest, lowestFrom = ns.Prices.LowestVsMarket(link or ("item:" .. itemID), itemID)
+		lowest, lowestFrom, lowestMarketFrom = ns.Prices.LowestVsMarket(itemKey, itemID)
 	end
 	-- For a material: the most profitable recipe this character knows that takes it.
 	-- Only when it makes gold: the best of recipes that all lose it is nothing to craft.
@@ -233,7 +269,10 @@ local function onItem(tooltip, data)
 	if db.tipRecipe and select(6, C_Item.GetItemInfoInstant(itemID)) == RECIPE_CLASS then
 		recipe = ns.AllRecipes.Scroll(itemID)
 	end
-	if not (vendorBuy or vendorSell or price or craftCost or list or rate or trend or lowest or best or recipe) then return end
+	if not (vendorBuy or vendorSell or price or marketValue or showCraftCost or craftVsAH or list or expectedDepositText
+		or showRate or trend or lowest or best or recipe) then
+		return
+	end
 
 	tooltip:AddLine(" ")
 	if vendorBuy then tooltip:AddDoubleLine("Vendor Buy", money(vendorBuy), 1, 0.82, 0, 1, 1, 1) end
@@ -245,19 +284,44 @@ local function onItem(tooltip, data)
 		tooltip:AddDoubleLine(sourceName(from), money(price), 1, 0.82, 0, 1, 1, 1)
 		if qty > 1 then tooltip:AddDoubleLine("  For" .. stack, money(price * qty), 0.53, 0.53, 0.53, 1, 1, 1) end
 	end
-	if craftCost then
-		tooltip:AddDoubleLine("Craft Cost", money(craftCost), 1, 0.82, 0, 1, 1, 1)
-		if qty > 1 then tooltip:AddDoubleLine("  For" .. stack, money(craftCost * qty), 0.53, 0.53, 0.53, 1, 1, 1) end
+	if marketValue then
+		tooltip:AddDoubleLine("Market Value", money(marketValue), 1, 0.82, 0, 1, 1, 1)
+		if qty > 1 then tooltip:AddDoubleLine("  For" .. stack, money(marketValue * qty), 0.53, 0.53, 0.53, 1, 1, 1) end
 	end
-	if rate then tooltip:AddDoubleLine("TSM Sale Rate", ns.Format.SaleRate(rate), 1, 0.82, 0, 1, 1, 1) end
-	if trend then tooltip:AddDoubleLine("TSM Trend", ns.Format.Trend(trend), 1, 0.82, 0, 1, 1, 1) end
+	if showCraftCost then
+		tooltip:AddDoubleLine("Craft Cost", money(showCraftCost), 1, 0.82, 0, 1, 1, 1)
+		if qty > 1 then tooltip:AddDoubleLine("  For" .. stack, money(showCraftCost * qty), 0.53, 0.53, 0.53, 1, 1, 1) end
+	end
+	if craftVsAH then
+		tooltip:AddDoubleLine("Craft vs AH", ns.Format.CraftVsAH(craftVsAH), 1, 0.82, 0, 1, 1, 1)
+	end
+	if showRate then
+		local tsm = rateFrom == "tsm" or (rateFrom == nil and ns.Prices.SaleRateSource and ns.Prices.SaleRateSource() == "tsm")
+		local label = tsm and "TSM Sale Rate" or "Your Sale Rate"
+		local value = ns.Format.SaleRate(showRate)
+		if not tsm and rateSold and rateTotal then
+			value = value .. " " .. ns.Color("muted", format("(%d/%d)", rateSold, rateTotal))
+		end
+		tooltip:AddDoubleLine(label, value, 1, 0.82, 0, 1, 1, 1)
+	end
+	if trend then
+		tooltip:AddDoubleLine(trendFrom == "tsm" and "TSM Trend" or "Trend", ns.Format.Trend(trend), 1, 0.82, 0, 1, 1, 1)
+	end
 	if lowest then
-		-- A scan's lowest auction isn't TSM's: only the market value is.
-		local label = lowestFrom == "tsm" and "TSM Lowest vs Market" or "Lowest vs TSM Market"
+		local label
+		if lowestMarketFrom == "tsm" then
+			label = lowestFrom == "tsm" and "TSM Lowest vs Market" or "Lowest vs TSM Market"
+		else
+			label = "Lowest vs Market"
+		end
 		tooltip:AddDoubleLine(label, ns.Format.LowestVsMarket(lowest), 1, 0.82, 0, 1, 1, 1)
 	end
 	if list then
 		tooltip:AddDoubleLine("AH Deposit " .. table.concat(DURATIONS, " / ") .. stack, table.concat(list, " / "),
+			1, 0.82, 0, 1, 1, 1)
+	end
+	if expectedDepositText then
+		tooltip:AddDoubleLine("Expected Deposit " .. table.concat(DURATIONS, " / ") .. stack, expectedDepositText,
 			1, 0.82, 0, 1, 1, 1)
 	end
 	if best then
@@ -277,9 +341,16 @@ local function onItem(tooltip, data)
 		if share then
 			tooltip:AddDoubleLine("  Return", ns.Format.Return(share), 0.53, 0.53, 0.53, 1, 1, 1)
 		end
-		-- With TSM: how well what it makes sells.
+		-- How well what it makes sells, from TSM or your own auction mail history.
 		if best.saleRate and shown(db.tipBestRate) then
-			tooltip:AddDoubleLine("  TSM Sale Rate", ns.Format.SaleRate(best.saleRate), 0.53, 0.53, 0.53, 1, 1, 1)
+			local tsm = best.saleRateFrom == "tsm"
+				or (best.saleRateFrom == nil and ns.Prices.SaleRateSource and ns.Prices.SaleRateSource() == "tsm")
+			local label = tsm and "  TSM Sale Rate" or "  Your Sale Rate"
+			local value = ns.Format.SaleRate(best.saleRate)
+			if not tsm and best.saleRateSold and best.saleRateTotal then
+				value = value .. " " .. ns.Color("muted", format("(%d/%d)", best.saleRateSold, best.saleRateTotal))
+			end
+			tooltip:AddDoubleLine(label, value, 0.53, 0.53, 0.53, 1, 1, 1)
 		end
 	end
 	if recipe then
@@ -294,7 +365,14 @@ local function onItem(tooltip, data)
 		local share = shown(db.tipBestShowReturn) and ns.Format.ReturnShare(net, recipe.cost)
 		if share then tooltip:AddDoubleLine("  Return", ns.Format.Return(share), 0.53, 0.53, 0.53, 1, 1, 1) end
 		if recipe.saleRate and shown(db.tipBestRate) then
-			tooltip:AddDoubleLine("  TSM Sale Rate", ns.Format.SaleRate(recipe.saleRate), 0.53, 0.53, 0.53, 1, 1, 1)
+			local tsm = recipe.saleRateFrom == "tsm"
+				or (recipe.saleRateFrom == nil and ns.Prices.SaleRateSource and ns.Prices.SaleRateSource() == "tsm")
+			local label = tsm and "  TSM Sale Rate" or "  Your Sale Rate"
+			local value = ns.Format.SaleRate(recipe.saleRate)
+			if not tsm and recipe.saleRateSold and recipe.saleRateTotal then
+				value = value .. " " .. ns.Color("muted", format("(%d/%d)", recipe.saleRateSold, recipe.saleRateTotal))
+			end
+			tooltip:AddDoubleLine(label, value, 0.53, 0.53, 0.53, 1, 1, 1)
 		end
 	end
 end

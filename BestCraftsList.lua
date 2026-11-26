@@ -1,6 +1,8 @@
--- Craftonomics: the Best crafts list. A "Best crafts" button at the top of the
--- panel opens a list over the crafting page's recipe details: every recipe of the
--- profession shown, most profitable first. Draws the rows BestCrafts.lua works out.
+-- Craftonomics: the Best crafts window. A "Best crafts" tab on the profession
+-- window (or clicking the minimap button / /craftonomics best) opens a movable,
+-- resizable window styled like All recipes: every recipe of the profession
+-- shown (or all your characters), most profitable first, with adjustable text
+-- size. Draws the rows BestCrafts.lua works out.
 local _, ns = ...
 
 local BestCraftsList = {}
@@ -9,40 +11,48 @@ ns.BestCraftsList = BestCraftsList
 local Color, Money, Item = ns.Color, ns.Format.Money, ns.Format.Item
 local format = string.format
 
-local ROW_HEIGHT = 24
-local ICON_SIZE = 20
-local ICON_X = 20          -- row's left edge to the item icon; the pin goes in that room
+local DEFAULT_WIDTH, DEFAULT_HEIGHT = 1040, 640
+local MIN_WIDTH, MIN_HEIGHT = 760, 420
+local MAX_WIDTH, MAX_HEIGHT = 1600, 1000
+local SIDE = 12             -- window edge to its content
+local TOP_BAR = 30          -- window top to Search, Filter, and Text size controls
+local INSET_TOP = 62        -- window top to the list's box
+local INSET_PAD = 8         -- that box's edge to what's in it
+local SCROLLBAR_ROOM = 20   -- scroll bar space inside the box
+local FOOTER_BAR = 32       -- room at the bottom for status, All characters, Strategy, and resize grip
+local CELL_GAP = 10         -- between columns
+local ICON_X_BASE = 20      -- row's left edge to the item icon at 12pt; the pin goes in that room
 local ACTIONS_SIZE = 18
 local ACTIONS_REACH_LEFT, ACTIONS_REACH_RIGHT = 8, 4 -- how far past the row button a click still lands on it
-local ACTIONS_DOT = 3      -- the row button's three dots: each dot's size,
-local ACTIONS_DOT_GAP = 5  -- and how far apart they are
-local PAD = 12             -- list edge to its content
-local CELL_GAP = 10        -- between columns
-local HEADER_HEIGHT = 20
-local TOP_HEIGHT = 34      -- title, search and filter
-local FOOTER_HEIGHT = 24
-local EMPTY_WIDTH = 420    -- the line an empty list shows: its width,
-local EMPTY_LIFT = 40      -- and how far above the middle it sits
-local TAG_GAP = 4          -- item name to its rank and other icons
-local LEDGER_SIZE = 20     -- the Ledger button on the panel
-local LEDGER_RIGHT = 46    -- panel's right edge to the button (room for its gear and close button)
-local LEDGER_TOP = 5       -- panel's top edge to the button
-local LEDGER_GAP = 6       -- the button to the panel's title
-local TAB_TEXT_ROOM = 40   -- the Best crafts tab's width beyond its label
-local BACK_INSET = 4       -- the list's edge to its background
-local TAB_GAP = 2          -- the tab before it to the Best crafts tab
-local SIDE_TAB_GAP = 2     -- Forever: the side tab above it to the Best crafts side tab, as Blizzard's
+local ACTIONS_DOT = 3       -- the row button's three dots: each dot's size,
+local ACTIONS_DOT_GAP = 5   -- and how far apart they are
+local EMPTY_WIDTH = 460     -- the line an empty list shows: its width,
+local EMPTY_LIFT = 30       -- and how far above the middle it sits
+local TAG_GAP = 4           -- item name to its rank and other icons
+local LEDGER_SIZE = 20      -- the Ledger button on the panel
+local LEDGER_RIGHT = 46     -- panel's right edge to the button (room for its gear and close button)
+local LEDGER_TOP = 5        -- panel's top edge to the button
+local LEDGER_GAP = 6        -- the button to the panel's title
+local TAB_TEXT_ROOM = 40    -- the Best crafts tab's width beyond its label
+local TAB_GAP = 2           -- the tab before it to the Best crafts tab
+local SIDE_TAB_GAP = 2      -- Forever: the side tab above it to the Best crafts side tab, as Blizzard's
 local LEDGER_ICON = "Interface\\Icons\\INV_Misc_Book_09"
 local SIDE_TAB_ICON = "Interface\\AddOns\\Craftonomics\\Media\\logo" -- the addon's logo
+local RESIZE_UP = "Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up"
+local RESIZE_HIGHLIGHT = "Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Highlight"
+local RESIZE_DOWN = "Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Down"
 local OPEN_TRIES, OPEN_RETRY = 20, 0.1 -- from an order: waiting for the recipes to show
-local REOPEN_TRIES = 40    -- after a profession switch: waiting for its recipes (OPEN_RETRY apart)
+local REOPEN_TRIES = 40     -- after a profession switch: waiting for its recipes (OPEN_RETRY apart)
 local FILTER_WIDTH = 90
-local STRATEGY_WIDTH = 130 -- the crafting strategy dropdown at the bottom
+local TEXT_SIZE_WIDTH = 114
+local STRATEGY_WIDTH = 136  -- the crafting strategy dropdown at the bottom
 local STRATEGY_LABEL = "Strategy:"
-local REFRESH_DELAY = 0.2  -- redraws are batched this long
-local LIST_LEVEL = 700     -- at least this frame level (Auctionator's crafting info sits at 520)
-local STALE_DAYS = 3       -- Auctionator counts this old or older show in grey
-local STALE_SCAN_DAYS = 7  -- other characters' saved scans this old or older show in the warning color
+local REFRESH_DELAY = 0.2   -- redraws are batched this long
+local STALE_DAYS = 3        -- Auctionator counts this old or older show in grey
+local STALE_SCAN_DAYS = 7   -- other characters' saved scans this old or older show in the warning color
+local MIN_FONT, MAX_FONT = 12, 20
+local FONT_SIZES = { 12, 13, 14, 15, 16, 18, 20 }
+
 -- Columns right of the item name, right to left: key, width, header, sort key,
 -- needsTSM: true shows it only with TSM, false only without, and allCharacters:
 -- the same for the All characters view, needsProcs: only while procs count, and
@@ -51,17 +61,17 @@ local STALE_SCAN_DAYS = 7  -- other characters' saved scans this old or older sh
 -- forever: true shows it only on WoW Forever, false only off it (Per skill-up
 -- takes Gold/day's place there). saleRate: false hides it where TSM's sale rate
 -- takes its place (WoW Forever with TSM, see Prices.ShowsSaleRate). needsRate:
--- only with TSM loaded, which is where the sale rate and the trend come from.
+-- when SaleRateSource() exists (TSM or personal sale rate).
 -- The demand column is TSM's Sells/day, or without TSM, You sold.
 -- Of the columns that can show, you pick which do (right-click a header, see
--- columnsMenu): offByDefault ones start hidden, and fixed ones always show.
+-- addColumnChoices): offByDefault ones start hidden, and fixed ones always show.
 local COLUMNS = {
 	{ key = "actions", width = ACTIONS_SIZE },
 	{ key = "sold", width = 64, header = "You sold", sort = "sold", needsTSM = false },
 	{ key = "perDay", width = 64, header = "Sells/day", sort = "perDay", needsTSM = true, saleRate = false },
 	{ key = "saleRate", width = 64, header = "Sale rate", sort = "saleRate", needsRate = true },
 	-- Starts hidden off WoW Forever, where the list has more columns to fit.
-	{ key = "trend", width = 56, header = "Trend", sort = "trend", needsRate = true, offByDefault = ns.QUALITY_CRAFTING },
+	{ key = "trend", width = 56, header = "Trend", sort = "trend", needsTrend = true, offByDefault = ns.QUALITY_CRAFTING },
 	{ key = "listed", width = 46, header = "Listed", sort = "listed", saleRate = false },
 	{ key = "gold", width = 74, header = "Gold/day", sort = "gold", forever = false },
 	{ key = "perPoint", width = 96, goldWidth = 56, header = "Per point", sort = "perPoint", forever = false,
@@ -91,15 +101,15 @@ local HEADER_TIPS = {
 	returns = "The profit as a share of what the materials cost: +25% means every 100 gold of materials makes 25 "
 		.. "gold. A low return leaves little room: a small change in prices turns the craft into a loss. Recipes "
 		.. "without a profit or a material cost show -.",
-	listed ="How many were up for sale the last time Auctionator saw them. Needs Auctionator.",
+	listed = "How many were up for sale in the last auction scan.",
 	perDay = "How many sell per day across your region, on average, from TSM.",
-	saleRate = "Of the auctions posted for this item, the share that sells, from TSM: a high rate means it sells, a "
-		.. "low one that most expire. " .. (ns.QUALITY_CRAFTING and "It counts your whole region, not just your realm."
-			or "On WoW Forever it counts every ruleset of your region together (Normal, PvP...), not just yours."),
+	saleRate = "Of the auctions posted for this item, the share that sells: a high rate means it sells, a "
+		.. "low one that most expire. "
+		.. (ns.QUALITY_CRAFTING and "With TSM, it counts your whole region; without TSM, it uses your own last 60 days of sold and expired auction mail (excluding cancellations)."
+			or "With TSM on WoW Forever, it counts every ruleset of your region together (Normal, PvP...); without TSM, it uses your own last 60 days of sold and expired auction mail (excluding cancellations)."),
 	trend = "How far the item's market value" .. (ns.QUALITY_CRAFTING and "" or " on your realm")
-		.. " is from its historical price, from TSM: -20% means it's "
-		.. "20% below it, +14% that it's 14% above. It's the number TSM's own tooltip shows beside its market value, "
-		.. "whatever TSM price you picked for pricing.",
+		.. " is from its historical price: -20% means it's "
+		.. "20% below it, +14% that it's 14% above. Uses TSM when loaded, or Auctionator's or Craftonomics' scan history.",
 	sold = format("How many your characters sold on the auction house in the last %d days, from the auction "
 		.. "house's mail. Counts sales from when you first opened your mailbox with this version.", ns.Sales.DAYS),
 	perPoint = "What each concentration point earns with this recipe: how much more a craft makes when you "
@@ -118,6 +128,47 @@ if not ns.QUALITY_CRAFTING then
 	HEADER_TIPS.chance = "The chance a craft gives a skill-up at your skill, in the recipe's color. Orange recipes always "
 		.. "give one; yellow and green ones less often the closer they get to grey. Grey recipes give none and show -."
 end
+
+---------------------------------------------------------------------------
+-- Fonts and responsive window metrics (minimum 12pt everywhere)
+---------------------------------------------------------------------------
+
+local function makeFont(name, base)
+	local font = CreateFont(name)
+	font:CopyFontObject(base)
+	return font
+end
+
+local rowFont = makeFont("CraftonomicsBestCraftsRowFont", GameFontHighlight)
+local headerFont = makeFont("CraftonomicsBestCraftsHeaderFont", GameFontHighlight)
+
+local function fontSize()
+	local raw = ns.db and tonumber(ns.db.bestFontSize) or MIN_FONT
+	return math.max(MIN_FONT, math.min(MAX_FONT, math.floor(raw + 0.5)))
+end
+
+local function metrics()
+	local fs = fontSize()
+	local scale = fs / MIN_FONT
+	local iconPx = math.max(14, math.min(24, math.floor(fs * 1.3 + 0.5)))
+	return {
+		size = fs,
+		scale = scale,
+		rowHeight = math.max(24, math.floor(fs * 1.9 + 0.5)),
+		iconSize = math.max(18, math.min(28, math.floor(fs * 1.6 + 0.5))),
+		headerHeight = math.max(22, math.floor(fs * 1.7 + 0.5)),
+		iconX = math.max(ICON_X_BASE, math.floor(ICON_X_BASE * scale + 0.5)),
+		inlineIcon = iconPx,
+	}
+end
+
+local appliedFontSize
+
+local function applyFontObject(fontObj, fs)
+	local path, _, flags = GameFontHighlight:GetFont()
+	if path then fontObj:SetFont(path, fs, flags or "") end
+end
+
 -- What the Profit column shows: with procs counted, the expected profit.
 local function shownProfit(row)
 	if ns.db.countProcs then return row.expected end
@@ -183,14 +234,14 @@ local SORT_VALUES = {
 -- A pinned row's mark: the first atlas the game has, or else the word.
 local PIN_ATLASES = { "Waypoint-MapPin-Tracked", "Waypoint-MapPin-Untracked" }
 local FIRST_CRAFT_ATLAS = "professions_icon_firsttimecraft"
-local COOLDOWN_ICON = "|TInterface\\Icons\\INV_Misc_PocketWatch_01:14|t"
 -- The sorted column's arrow: the auction house's, or the older one.
 local SORT_ARROW_ATLAS = "auctionhouse-ui-sortarrow"
 local SORT_ARROW_FILE = "Interface\\Buttons\\UI-SortArrow"
 local SORT_ARROW_SIZE = 10
 local MAX_SORTS = 2        -- how many columns the list sorts by at once
 
-local list, listTab, ledgerButton, scrollBox, status, title, strategyDropdown, charactersButton, emptyText
+local list, listTab, ledgerButton, scrollBox, scrollView, headerBar, status
+local strategyDropdown, textSizeDropdown, charactersButton, emptyText
 local headers = {}
 local refreshQueued = false
 
@@ -206,16 +257,20 @@ local function dailyText(amount)
 	return Color(ns.AmountColor(amount), (amount > 0 and "+" or "-") .. GetMoneyString(gold * 10000, true))
 end
 
-local function pinMarkup()
+local function pinMarkup(px)
 	for _, atlas in ipairs(PIN_ATLASES) do
-		if C_Texture.GetAtlasInfo(atlas) then return CreateAtlasMarkup(atlas, 16, 16) end
+		if C_Texture.GetAtlasInfo(atlas) then return CreateAtlasMarkup(atlas, px, px) end
 	end
 	return Color("heading", "pinned")
 end
 
-local function firstCraftMarkup()
-	if C_Texture.GetAtlasInfo(FIRST_CRAFT_ATLAS) then return CreateAtlasMarkup(FIRST_CRAFT_ATLAS, 16, 16) end
+local function firstCraftMarkup(px)
+	if C_Texture.GetAtlasInfo(FIRST_CRAFT_ATLAS) then return CreateAtlasMarkup(FIRST_CRAFT_ATLAS, px, px) end
 	return Color("good", "new")
+end
+
+local function cooldownMarkup(px)
+	return format("|TInterface\\Icons\\INV_Misc_PocketWatch_01:%d|t", px)
 end
 
 -- "0.4" below 10 a day, "25" or "1,250" from there.
@@ -276,6 +331,7 @@ local function columnAvailable(column)
 	if column.forever ~= nil and column.forever == ns.QUALITY_CRAFTING then return false end
 	if column.saleRate ~= nil and column.saleRate ~= ns.Prices.ShowsSaleRate() then return false end
 	if column.needsRate and not ns.Prices.HasSaleRate() then return false end
+	if column.needsTrend and not ns.Prices.HasTrend() then return false end
 	if column.needsProcs and not ns.db.countProcs then return false end
 	if column.needsTSM ~= nil and column.needsTSM ~= ns.Prices.HasTSM() then return false end
 	return column.allCharacters == nil or column.allCharacters == ns.db.bestAllCharacters
@@ -294,9 +350,6 @@ local function columnShown(column)
 	return columnAvailable(column) and columnChosen(column)
 end
 
--- The column the list sorts by. A sort by the demand column that's hidden
--- (You sold with TSM, Sells/day without) goes by the one that shows. A saved sort
--- by a column that's gone, or hidden in this view, goes by profit.
 -- A saved sort key as the list can sort by it now, or nil when its column is
 -- gone or hidden in this view.
 local function usableKey(key)
@@ -499,14 +552,21 @@ local function rowTooltip(tip, row)
 		row.itemName and tostring(row.sold) or Color("muted", "-"))
 	if ns.Prices.HasTSM() then
 		addPair(tip, "Sells per day in your region (TSM)", row.soldPerDay and perDayText(row.soldPerDay) or Color("muted", "-"))
-		if ns.Prices.HasSaleRate() then
-			addPair(tip, "Sale rate in your region (TSM)",
-				row.saleRate and ns.Format.SaleRate(row.saleRate) or Color("muted", "-"))
+	end
+	if ns.Prices.HasSaleRate() then
+		local tsm = (row.saleRateFrom or ns.Prices.SaleRateSource()) == "tsm"
+		local label = tsm and "Sale rate in your region (TSM)" or "Your sale rate"
+		local value = row.saleRate and ns.Format.SaleRate(row.saleRate) or Color("muted", "-")
+		if row.saleRate and not tsm and row.saleRateSold and row.saleRateTotal then
+			value = value .. " " .. Color("muted", format("(%d/%d)", row.saleRateSold, row.saleRateTotal))
 		end
+		addPair(tip, label, value)
 	end
 	if ns.Prices.HasTrend() then
-		addPair(tip, ns.QUALITY_CRAFTING and "Trend (TSM)" or "Trend on your realm (TSM)",
-			row.trend and ns.Format.Trend(row.trend) or Color("muted", "-"))
+		local tsm = ns.Prices.TrendSource() == "tsm"
+		local label = ns.QUALITY_CRAFTING and (tsm and "Trend (TSM)" or "Trend")
+			or (tsm and "Trend on your realm (TSM)" or "Trend on your realm")
+		addPair(tip, label, row.trend and ns.Format.Trend(row.trend) or Color("muted", "-"))
 	end
 	local daily = goldPerDay(row)
 	if daily then addPair(tip, "Gold per day", signedMoney(daily)) end
@@ -514,8 +574,8 @@ local function rowTooltip(tip, row)
 		local s = row.skillup
 		addPair(tip, "Per skill-up (" .. ns.Skillups.ChanceText(s.chance, s.color) .. ")", ns.Skillups.CostText(s.cost))
 	end
-	if row.firstCraft then addLine(tip, firstCraftMarkup() .. " First craft: gives profession knowledge") end
-	if row.cooldown then addLine(tip, COOLDOWN_ICON .. " On cooldown: ready in " .. timeText(row.cooldown)) end
+	if row.firstCraft then addLine(tip, firstCraftMarkup(16) .. " First craft: gives profession knowledge") end
+	if row.cooldown then addLine(tip, cooldownMarkup(14) .. " On cooldown: ready in " .. timeText(row.cooldown)) end
 
 	tip:AddLine(" ")
 	tip:AddLine(Color("simulated", ns.BestCrafts.IsMine(entry) and "Click: show the recipe"
@@ -524,22 +584,25 @@ local function rowTooltip(tip, row)
 end
 
 ---------------------------------------------------------------------------
--- Rows
+-- Rows and column layout
 ---------------------------------------------------------------------------
 
--- Where each column sits in a row `width` wide: key -> { x, width }. The item
--- name takes what the others leave.
+-- Where each column sits in a row `width` wide: key -> { x, width }. Numeric
+-- columns scale with the chosen text size; the item name takes what's left.
 local function columnLayout(width)
-	local layout, right = {}, width - 4
+	local m = metrics()
+	local layout, right = {}, (width or DEFAULT_WIDTH) - 4
 	for _, column in ipairs(COLUMNS) do
 		if columnShown(column) then
-			local columnWidth = (not ns.QUALITY_CRAFTING and column.foreverWidth)
+			local base = (not ns.QUALITY_CRAFTING and column.foreverWidth)
 				or (ns.db.precision == "gold" and column.goldWidth) or column.width
+			local columnWidth = column.key == "actions" and ACTIONS_SIZE or math.floor(base * m.scale + 0.5)
 			layout[column.key] = { x = right - columnWidth, width = columnWidth }
 			right = right - columnWidth - CELL_GAP
 		end
 	end
-	layout.name = { x = ICON_X + ICON_SIZE + 6, width = right - (ICON_X + ICON_SIZE + 6) }
+	local nameX = m.iconX + m.iconSize + 6
+	layout.name = { x = nameX, width = math.max(80, right - nameX) }
 	return layout
 end
 
@@ -558,7 +621,8 @@ local function actionsTooltip(self)
 end
 
 local function cellText(button, key, justify)
-	local text = button:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+	local text = button:CreateFontString(nil, "OVERLAY")
+	text:SetFontObject(rowFont)
 	text:SetJustifyH(justify or "RIGHT")
 	text:SetWordWrap(false)
 	button.cells[key] = text
@@ -600,19 +664,23 @@ end
 local function createRow(button)
 	button.cells = {}
 	button:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+	local stripe = button:CreateTexture(nil, "BACKGROUND")
+	stripe:SetAllPoints()
+	stripe:SetColorTexture(1, 1, 1, 0.035)
+	button.stripe = stripe
 	local highlight = button:CreateTexture(nil, "HIGHLIGHT")
 	highlight:SetAllPoints()
 	highlight:SetColorTexture(1, 1, 1, 0.08)
 	button.icon = button:CreateTexture(nil, "ARTWORK")
-	button.icon:SetSize(ICON_SIZE, ICON_SIZE)
-	button.icon:SetPoint("LEFT", ICON_X, 0)
-	button.pin = button:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-	button.pin:SetPoint("LEFT", 2, 0)
 	button.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+	button.pin = button:CreateFontString(nil, "OVERLAY")
+	button.pin:SetFontObject(rowFont)
+	button.pin:SetPoint("LEFT", 2, 0)
 	cellText(button, "name", "LEFT")
 	-- The rank and other icons, right after the name, so a long name that's cut
 	-- short never hides them.
-	button.tags = button:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+	button.tags = button:CreateFontString(nil, "OVERLAY")
+	button.tags:SetFontObject(rowFont)
 	button.tags:SetWordWrap(false)
 	for _, column in ipairs(COLUMNS) do
 		if column.header then cellText(button, column.key) end
@@ -621,7 +689,6 @@ local function createRow(button)
 	-- Three dots, the usual sign for "more actions", drawn so they stay sharp.
 	local actions = CreateFrame("Button", nil, button)
 	actions:SetSize(ACTIONS_SIZE, ACTIONS_SIZE)
-	actions:SetHitRectInsets(-ACTIONS_REACH_LEFT, -ACTIONS_REACH_RIGHT, -(ROW_HEIGHT - ACTIONS_SIZE) / 2, -(ROW_HEIGHT - ACTIONS_SIZE) / 2)
 	for dot = -1, 1 do
 		local texture = actions:CreateTexture(nil, "ARTWORK")
 		texture:SetSize(ACTIONS_DOT, ACTIONS_DOT)
@@ -644,8 +711,7 @@ local function createRow(button)
 			ns.Shopping.Say(format("Log in to %s to craft this.", ns.Ranks.CharacterName(crafterKey(self.row))))
 			return
 		end
-		BestCraftsList.Hide()
-		ns.Blizzard.ShowRecipe(self.row.entry.recipeID)
+		ns.Blizzard.OpenRecipe(self.row.entry.recipeID, self.row.entry.professionID)
 	end)
 	button:SetScript("OnEnter", function(self)
 		GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
@@ -657,8 +723,16 @@ end
 
 local function drawRow(button, row)
 	if not button.cells then createRow(button) end
+	local m = metrics()
 	button.row = row
 	button.actions.row = row
+	button.stripe:SetShown(row.stripe == true)
+	button.icon:SetSize(m.iconSize, m.iconSize)
+	button.icon:ClearAllPoints()
+	button.icon:SetPoint("LEFT", m.iconX, 0)
+	local reachY = math.max(0, (m.rowHeight - ACTIONS_SIZE) / 2)
+	button.actions:SetHitRectInsets(-ACTIONS_REACH_LEFT, -ACTIONS_REACH_RIGHT, -reachY, -reachY)
+
 	local layout = columnLayout(scrollBox:GetWidth())
 	for key, text in pairs(button.cells) do
 		local place = layout[key]
@@ -678,8 +752,8 @@ local function drawRow(button, row)
 	local name = row.itemName or entry.name or "?"
 	local tags = {}
 	if row.quality and entry.maxRank > 1 then tags[#tags + 1] = rankIcon(row, row.quality) end
-	if row.firstCraft then tags[#tags + 1] = firstCraftMarkup() end
-	if row.cooldown then tags[#tags + 1] = COOLDOWN_ICON end
+	if row.firstCraft then tags[#tags + 1] = firstCraftMarkup(m.inlineIcon) end
+	if row.cooldown then tags[#tags + 1] = cooldownMarkup(m.inlineIcon) end
 	local ignored = ns.db.bestIgnored[entry.recipeID]
 	if ignored then tags[#tags + 1] = Color("muted", "ignored") end
 	local tagText = table.concat(tags, " ")
@@ -687,7 +761,7 @@ local function drawRow(button, row)
 	local nameCell = button.cells.name
 	-- In its rarity's color; grey when ignored or without a price. An enchant that
 	-- makes no item has no price to miss: it stays white.
-	button.pin:SetText(isPinned(row) and pinMarkup() or "")
+	button.pin:SetText(isPinned(row) and pinMarkup(m.inlineIcon) or "")
 	nameCell:SetText(((row.profit or not row.output) and not ignored)
 		and ns.Format.RarityColored(row.output and row.output.itemID, name)
 		or Color("muted", name))
@@ -733,11 +807,11 @@ end
 -- One column header at `place` ({ x, width }), with an arrow beside the label
 -- while it sorts: down for most first, up for least first. `sort` is its entry in
 -- the sort chain. The first column there turns gold (`first`) and the second
--- light blue. There's no room for numbers.
-local function drawHeader(key, header, place, sort, first)
+-- light blue.
+local function drawHeader(key, header, place, sort, first, headerHeight)
 	header:ClearAllPoints()
-	header:SetPoint("BOTTOMLEFT", scrollBox, "TOPLEFT", place.x, 2)
-	header:SetSize(place.width, HEADER_HEIGHT)
+	header:SetPoint("BOTTOMLEFT", scrollBox, "TOPLEFT", place.x, 0)
+	header:SetSize(place.width, headerHeight)
 	local label = key == "profit" and ns.db.countProcs and "Expected" or header.label
 	header.text:SetText(sort and Color(first and "heading" or "secondSort", label) or label)
 	local arrow = header.arrow
@@ -754,6 +828,8 @@ local function drawHeader(key, header, place, sort, first)
 end
 
 local function updateHeaders()
+	if not scrollBox then return end
+	local m = metrics()
 	local layout = columnLayout(scrollBox:GetWidth())
 	local chain = sortChain()
 	local orderOf = {}
@@ -761,8 +837,33 @@ local function updateHeaders()
 	for key, header in pairs(headers) do
 		local place = layout[key]
 		header:SetShown(place ~= nil)
-		if place then drawHeader(key, header, place, chain[orderOf[key]], orderOf[key] == 1) end
+		if place then drawHeader(key, header, place, chain[orderOf[key]], orderOf[key] == 1, m.headerHeight) end
 	end
+end
+
+local function applyFontIfChanged()
+	local m = metrics()
+	if appliedFontSize == m.size then return end
+	appliedFontSize = m.size
+	applyFontObject(rowFont, m.size)
+	applyFontObject(headerFont, m.size)
+	if headerBar then headerBar:SetHeight(m.headerHeight) end
+	if scrollBox then
+		scrollBox:ClearAllPoints()
+		scrollBox:SetPoint("TOPLEFT", list.Inset, "TOPLEFT", INSET_PAD, -(INSET_PAD + m.headerHeight))
+		scrollBox:SetPoint("BOTTOMRIGHT", list.Inset, "BOTTOMRIGHT", -SCROLLBAR_ROOM, INSET_PAD)
+	end
+	if scrollView and scrollView.SetElementExtent then scrollView:SetElementExtent(m.rowHeight) end
+	if textSizeDropdown and textSizeDropdown.GenerateMenu then textSizeDropdown:GenerateMenu() end
+end
+
+function BestCraftsList.ApplyFont()
+	appliedFontSize = nil
+	applyFontIfChanged()
+	if scrollBox and scrollBox.FullUpdate and ScrollBoxConstants then
+		pcall(scrollBox.FullUpdate, scrollBox, ScrollBoxConstants.UpdateImmediately)
+	end
+	BestCraftsList.Render()
 end
 
 local function statusText(count, total)
@@ -777,18 +878,21 @@ end
 function BestCraftsList.Render()
 	refreshQueued = false
 	if not (list and list:IsShown()) then return end
+	applyFontIfChanged()
 	local scan = ns.BestCrafts.Current()
 	local shown = ns.db.bestAllCharacters and "All characters" or (scan and scan.name)
-	title:SetText("Best crafts" .. (shown and ("  " .. Color("muted", shown)) or ""))
+	list:SetTitle("Best crafts" .. (shown and ("  " .. Color("muted", shown)) or ""))
 	if ns.db.bestAllCharacters then charactersButton:LockHighlight() else charactersButton:UnlockHighlight() end
 	local rows, short = visibleRows()
+	for index, row in ipairs(rows) do row.stripe = index % 2 == 0 end
 	scrollBox:SetDataProvider(CreateDataProvider(rows), ScrollBoxConstants.RetainScrollPosition)
 	status:SetText(statusText(#rows, #allRows))
 	local note = emptyNote(#rows, short)
 	emptyText:SetText(note or "")
 	emptyText:SetShown(note ~= nil)
-	-- The strategy can change in the options too.
+	-- The strategy and text size can change in the options too.
 	if strategyDropdown then strategyDropdown:GenerateMenu() end
+	if textSizeDropdown then textSizeDropdown:GenerateMenu() end
 	updateHeaders()
 end
 
@@ -808,6 +912,10 @@ function BestCraftsList.Refresh()
 	refreshQueued = true
 	C_Timer.After(REFRESH_DELAY, renderWhenIdle)
 end
+
+---------------------------------------------------------------------------
+-- Sorting and column menus
+---------------------------------------------------------------------------
 
 -- Names and crafters A to Z, skill-ups cheapest first, the rest most first.
 local function startsAscending(key)
@@ -886,7 +994,8 @@ end
 local function createHeader(key, label)
 	local header = CreateFrame("Button", nil, list)
 	header:RegisterForClicks("LeftButtonUp", "RightButtonUp")
-	header.text = header:CreateFontString(nil, "OVERLAY", "GameFontHighlight") -- white; the sorted one turns gold
+	header.text = header:CreateFontString(nil, "OVERLAY") -- white; the sorted one turns gold
+	header.text:SetFontObject(headerFont)
 	header.text:SetAllPoints()
 	header.text:SetJustifyH(key == "name" and "LEFT" or "RIGHT")
 	header.label = label
@@ -1013,13 +1122,42 @@ local function filterMenu(_, root)
 end
 
 ---------------------------------------------------------------------------
--- The crafting strategy dropdown
+-- Window controls: text size, strategy, all characters, position & resize
 ---------------------------------------------------------------------------
+
+local function textSizeMenu(_, root)
+	root:CreateTitle("Text size")
+	for _, size in ipairs(FONT_SIZES) do
+		local label = size == MIN_FONT and format("%d pt (default)", size) or format("%d pt", size)
+		root:CreateRadio(label, function() return fontSize() == size end, function()
+			ns.Options.Set("bestFontSize", size)
+		end, size)
+	end
+end
+
+local function createTextSizeDropdown()
+	textSizeDropdown = CreateFrame("DropdownButton", nil, list, "WowStyle1DropdownTemplate")
+	textSizeDropdown:SetWidth(TEXT_SIZE_WIDTH)
+	textSizeDropdown:SetPoint("TOPRIGHT", -SIDE, -TOP_BAR)
+	if textSizeDropdown.SetSelectionTranslator then
+		textSizeDropdown:SetSelectionTranslator(function(selection)
+			return "Text: " .. (selection and selection.data or fontSize()) .. "pt"
+		end)
+	end
+	textSizeDropdown:SetupMenu(textSizeMenu)
+	textSizeDropdown:HookScript("OnEnter", function(self)
+		GameTooltip:SetOwner(self, "ANCHOR_TOP")
+		GameTooltip:SetText("Text size")
+		GameTooltip:AddLine("Changes the font size and row spacing in the Best crafts window.", 1, 1, 1, true)
+		GameTooltip:Show()
+	end)
+	textSizeDropdown:HookScript("OnLeave", GameTooltip_Hide)
+end
 
 local function createStrategyDropdown()
 	strategyDropdown = CreateFrame("DropdownButton", nil, list, "WowStyle1DropdownTemplate")
 	strategyDropdown:SetWidth(STRATEGY_WIDTH)
-	strategyDropdown:SetPoint("BOTTOMRIGHT", -PAD, PAD - 4)
+	strategyDropdown:SetPoint("BOTTOMRIGHT", -(SIDE + 12), 5)
 	if strategyDropdown.SetSelectionTranslator then strategyDropdown:SetSelectionTranslator(ns.StrategyText) end
 	strategyDropdown:SetupMenu(ns.StrategyMenu)
 	local label = list:CreateFontString(nil, "OVERLAY", "GameFontNormal")
@@ -1028,16 +1166,12 @@ local function createStrategyDropdown()
 	return STRATEGY_WIDTH + 6 + label:GetUnboundedStringWidth()
 end
 
----------------------------------------------------------------------------
--- The All characters button
----------------------------------------------------------------------------
-
 -- Between the status line and the strategy dropdown; lit while it's on.
 local function createCharactersButton(strategyWidth)
 	charactersButton = CreateFrame("Button", nil, list, "UIPanelButtonTemplate")
 	charactersButton:SetText("All characters")
 	charactersButton:SetSize(charactersButton:GetFontString():GetUnboundedStringWidth() + 24, 22)
-	charactersButton:SetPoint("BOTTOMRIGHT", -(PAD + strategyWidth + 12), PAD - 3)
+	charactersButton:SetPoint("BOTTOMRIGHT", -(SIDE + 12 + strategyWidth + 12), 5)
 	charactersButton:SetScript("OnClick", function()
 		ns.db.bestAllCharacters = not ns.db.bestAllCharacters
 		BestCraftsList.Render()
@@ -1054,13 +1188,54 @@ local function createCharactersButton(strategyWidth)
 	charactersButton:SetScript("OnLeave", GameTooltip_Hide)
 end
 
+local function clampSize(w, h)
+	w = math.max(MIN_WIDTH, math.min(MAX_WIDTH, math.floor((w or DEFAULT_WIDTH) + 0.5)))
+	h = math.max(MIN_HEIGHT, math.min(MAX_HEIGHT, math.floor((h or DEFAULT_HEIGHT) + 0.5)))
+	return w, h
+end
+
+local function saveLayout()
+	if not (list and ns.db) then return end
+	local w, h = clampSize(list:GetWidth(), list:GetHeight())
+	local point, _, relPoint, x, y = list:GetPoint(1)
+	ns.db.bestWindow = {
+		w = w,
+		h = h,
+		point = type(point) == "string" and point or "CENTER",
+		rel = type(relPoint) == "string" and relPoint or "CENTER",
+		x = type(x) == "number" and x or 0,
+		y = type(y) == "number" and y or 0,
+	}
+end
+
+local function applySavedLayout()
+	if not list then return end
+	local saved = ns.db and ns.db.bestWindow
+	local w, h = clampSize(saved and saved.w, saved and saved.h)
+	list:SetSize(w, h)
+	list:ClearAllPoints()
+	if saved and type(saved.point) == "string" and type(saved.x) == "number" and type(saved.y) == "number" then
+		list:SetPoint(saved.point, UIParent, saved.rel or saved.point, saved.x, saved.y)
+	else
+		list:SetPoint("CENTER")
+	end
+end
+
+function BestCraftsList.ResetLayout()
+	if ns.db then ns.db.bestWindow = nil end
+	if list then
+		applySavedLayout()
+		BestCraftsList.Render()
+	end
+end
+
 ---------------------------------------------------------------------------
 -- The notice over the list (old prices), drawn like Blizzard's Crafting Details box
 ---------------------------------------------------------------------------
 
 local NOTICE_WIDTH, NOTICE_HEIGHT = 263, 200 -- the Crafting Details box's width, and room for the text
 local NOTICE_SHADE_ALPHA = 0.7 -- how dark the list gets behind the notice
-local NOTICE_SHADE_INSET = 4   -- inside the list's border
+local NOTICE_SHADE_INSET = 4   -- inside the inset's border
 local NOTICE_ART = { -- its background, top to bottom
 	top = "Professions-QualityPane-bg-top",
 	middle = "Professions-QualityPane-bg-middle",
@@ -1082,8 +1257,8 @@ end
 local function createNotice()
 	-- The list darkens behind the notice, and takes no clicks until it's closed.
 	local shade = CreateFrame("Frame", nil, list)
-	shade:SetPoint("TOPLEFT", NOTICE_SHADE_INSET, -NOTICE_SHADE_INSET)
-	shade:SetPoint("BOTTOMRIGHT", -NOTICE_SHADE_INSET, NOTICE_SHADE_INSET)
+	shade:SetPoint("TOPLEFT", list.Inset, "TOPLEFT", NOTICE_SHADE_INSET, -NOTICE_SHADE_INSET)
+	shade:SetPoint("BOTTOMRIGHT", list.Inset, "BOTTOMRIGHT", -NOTICE_SHADE_INSET, NOTICE_SHADE_INSET)
 	shade:SetFrameLevel(scrollBox:GetFrameLevel() + 20)
 	shade:EnableMouse(true)
 	shade:Hide()
@@ -1141,38 +1316,40 @@ function BestCraftsList.TestNotice()
 end
 
 local function createList()
-	list = CreateFrame("Frame", "CraftonomicsBestCrafts", ProfessionsFrame.CraftingPage, "BackdropTemplate")
-	-- The recipe list and the recipe details, as a page of its own.
-	list:SetPoint("TOPRIGHT", ns.Blizzard.RecipeDetails(), "TOPRIGHT")
-	list:SetPoint("BOTTOMLEFT", ns.Blizzard.RecipeList(), "BOTTOMLEFT")
-	-- Over everything there, other addons' frames included.
-	list:SetFrameLevel(math.max(ns.Blizzard.RecipeDetails():GetFrameLevel() + 40, LIST_LEVEL))
-	-- Except what Blizzard draws on a higher strata: that's lowered while the list is open.
-	list:SetScript("OnShow", function() ns.Blizzard.SetDetailsCovered(true) end)
-	list:SetScript("OnHide", function() ns.Blizzard.SetDetailsCovered(false) end)
-	list:SetBackdrop({
-		bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
-		edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-		tile = true, tileSize = 16, edgeSize = 16,
-		insets = { left = 4, right = 4, top = 4, bottom = 4 },
-	})
-	list:SetBackdropColor(0.05, 0.05, 0.05, 0.97)
-	list:SetBackdropBorderColor(0.6, 0.6, 0.6, 1)
-	-- The backdrop's texture lets the recipes show through.
-	local solid = list:CreateTexture(nil, "BACKGROUND", nil, -8)
-	solid:SetPoint("TOPLEFT", BACK_INSET, -BACK_INSET)
-	solid:SetPoint("BOTTOMRIGHT", -BACK_INSET, BACK_INSET)
-	solid:SetColorTexture(0.05, 0.05, 0.05, 1)
+	if list then return end
+	local m = metrics()
+	list = CreateFrame("Frame", "CraftonomicsBestCrafts", UIParent, "ButtonFrameTemplate")
+	if ButtonFrameTemplate_HidePortrait then ButtonFrameTemplate_HidePortrait(list) end
+	list:SetTitle("Best crafts")
+	list:SetFrameStrata("HIGH")
+	list:SetToplevel(true)
+	list:SetMovable(true)
+	list:SetResizable(true)
+	if list.SetResizeBounds then
+		list:SetResizeBounds(MIN_WIDTH, MIN_HEIGHT, MAX_WIDTH, MAX_HEIGHT)
+	else
+		if list.SetMinResize then list:SetMinResize(MIN_WIDTH, MIN_HEIGHT) end
+		if list.SetMaxResize then list:SetMaxResize(MAX_WIDTH, MAX_HEIGHT) end
+	end
+	list:SetClampedToScreen(true)
 	list:EnableMouse(true)
+	list:RegisterForDrag("LeftButton")
+	list:SetScript("OnDragStart", list.StartMoving)
+	list:SetScript("OnDragStop", function(self)
+		self:StopMovingOrSizing()
+		saveLayout()
+	end)
 	list:Hide()
+	tinsert(UISpecialFrames, "CraftonomicsBestCrafts")
+	applySavedLayout()
 
-	title = list:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-	title:SetPoint("TOPLEFT", PAD, -PAD)
-	title:SetJustifyH("LEFT")
+	list.Inset:ClearAllPoints()
+	list.Inset:SetPoint("TOPLEFT", SIDE - 4, -INSET_TOP)
+	list.Inset:SetPoint("BOTTOMRIGHT", -(SIDE - 4), FOOTER_BAR)
 
 	local search = CreateFrame("EditBox", nil, list, "SearchBoxTemplate")
-	search:SetSize(160, 20)
-	search:SetPoint("TOPRIGHT", -PAD - 2, -PAD + 2)
+	search:SetSize(220, 20)
+	search:SetPoint("TOPLEFT", SIDE + 6, -(TOP_BAR + 2))
 	search:SetAutoFocus(false)
 	search:SetFontObject("GameFontHighlight")
 	search:HookScript("OnTextChanged", BestCraftsList.Refresh)
@@ -1192,24 +1369,30 @@ local function createList()
 
 	local filter = CreateFrame("DropdownButton", nil, list, "WowStyle1FilterDropdownTemplate")
 	filter:SetSize(FILTER_WIDTH, 22)
-	filter:SetPoint("RIGHT", search, "LEFT", -10, 0)
+	filter:SetPoint("LEFT", search, "RIGHT", 12, 0)
 	filter:SetText(FILTER)
 	filter:SetupMenu(filterMenu)
 	filter:SetIsDefaultCallback(filtersAreDefault)
 	filter:SetDefaultCallback(resetFilters)
-	title:SetPoint("RIGHT", filter, "LEFT", -8, 0)
+
+	createTextSizeDropdown()
 
 	scrollBox = CreateFrame("Frame", nil, list, "WowScrollBoxList")
-	scrollBox:SetPoint("TOPLEFT", PAD, -(PAD + TOP_HEIGHT + HEADER_HEIGHT))
-	scrollBox:SetPoint("BOTTOMRIGHT", -(PAD + 14), PAD + FOOTER_HEIGHT)
+	scrollBox:SetPoint("TOPLEFT", list.Inset, "TOPLEFT", INSET_PAD, -(INSET_PAD + m.headerHeight))
+	scrollBox:SetPoint("BOTTOMRIGHT", list.Inset, "BOTTOMRIGHT", -SCROLLBAR_ROOM, INSET_PAD)
 	local scrollBar = CreateFrame("EventFrame", nil, list, "MinimalScrollBar")
 	scrollBar:SetPoint("TOPLEFT", scrollBox, "TOPRIGHT", 6, 0)
 	scrollBar:SetPoint("BOTTOMLEFT", scrollBox, "BOTTOMRIGHT", 6, 0)
-	local view = CreateScrollBoxListLinearView()
-	view:SetElementExtent(ROW_HEIGHT)
-	view:SetElementInitializer("Button", drawRow)
-	ScrollUtil.InitScrollBoxListWithScrollBar(scrollBox, scrollBar, view)
-	scrollBox:HookScript("OnSizeChanged", BestCraftsList.Refresh)
+	scrollView = CreateScrollBoxListLinearView()
+	scrollView:SetElementExtent(m.rowHeight)
+	scrollView:SetElementInitializer("Button", drawRow)
+	ScrollUtil.InitScrollBoxListWithScrollBar(scrollBox, scrollBar, scrollView)
+
+	headerBar = list:CreateTexture(nil, "BACKGROUND", nil, 1)
+	headerBar:SetPoint("BOTTOMLEFT", scrollBox, "TOPLEFT", 0, 0)
+	headerBar:SetPoint("BOTTOMRIGHT", scrollBox, "TOPRIGHT", 0, 0)
+	headerBar:SetHeight(m.headerHeight)
+	headerBar:SetColorTexture(0, 0, 0, 0.5)
 
 	-- Why the list is empty, when it is (see emptyNote).
 	emptyText = list:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
@@ -1228,10 +1411,32 @@ local function createList()
 	local strategyWidth = createStrategyDropdown()
 	createCharactersButton(strategyWidth)
 	status = list:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-	status:SetPoint("BOTTOMLEFT", PAD, PAD)
-	status:SetPoint("BOTTOMRIGHT", charactersButton, "BOTTOMLEFT", -8, 3)
+	status:SetPoint("BOTTOMLEFT", SIDE + 4, 10)
+	status:SetPoint("RIGHT", charactersButton, "LEFT", -8, 0)
 	status:SetJustifyH("LEFT")
 	status:SetWordWrap(false)
+
+	local grip = CreateFrame("Button", nil, list)
+	grip:SetSize(16, 16)
+	grip:SetPoint("BOTTOMRIGHT", -3, 3)
+	grip:SetNormalTexture(RESIZE_UP)
+	grip:SetHighlightTexture(RESIZE_HIGHLIGHT)
+	grip:SetPushedTexture(RESIZE_DOWN)
+	grip:SetScript("OnMouseDown", function() list:StartSizing("BOTTOMRIGHT") end)
+	grip:SetScript("OnMouseUp", function()
+		list:StopMovingOrSizing()
+		saveLayout()
+		BestCraftsList.Render()
+	end)
+
+	list:SetScript("OnSizeChanged", function()
+		updateHeaders()
+		BestCraftsList.Refresh()
+	end)
+	list:SetScript("OnHide", function()
+		GameTooltip:Hide()
+		BestCraftsList.UpdateTab()
+	end)
 
 	-- Item names arrive from the server after first use; what you own changes what a craft costs you.
 	list:RegisterEvent("GET_ITEM_INFO_RECEIVED")
@@ -1240,28 +1445,28 @@ local function createList()
 		if event == "BAG_UPDATE_DELAYED" then ns.BestCrafts.Reprice() end
 		BestCraftsList.Refresh()
 	end)
+
+	applyFontIfChanged()
 end
 
 ---------------------------------------------------------------------------
 -- Opening and closing
 ---------------------------------------------------------------------------
 
--- Whether the list can open now: this character's profession, on the crafting
--- page's full view.
+-- Whether the list can scan this character's active profession right now.
 local function canShow()
 	return ns.Blizzard.IsOwnProfession() and ns.Blizzard.ShowsRecipeList()
 end
 
--- Shows the tab with the profession's own tabs, selected while the list is open,
+-- Shows the tab with the profession's own tabs, selected while the window is open,
 -- and the panel's Ledger button on the crafting page and your crafting orders.
 function BestCraftsList.UpdateTab()
 	if not listTab then return end
 	local page = ns.Blizzard.ActivePage()
 	local own = ns.Blizzard.IsOwnProfession()
 	ledgerButton:SetShown((page == "craft" and canShow()) or (page == "order" and own))
-	local open = list:IsShown()
+	local open = list ~= nil and list:IsShown()
 	if listTab.side then
-		-- Forever: only next to the recipes, as the list opens over them.
 		listTab:SetShown(canShow())
 		if listTab.checked ~= open then
 			listTab.checked = open
@@ -1277,7 +1482,6 @@ function BestCraftsList.UpdateTab()
 	end
 	listTab:SetShown(own and ns.Blizzard.TabsShown())
 	if listTab.isSelected ~= open then listTab:SetTabSelected(open) end
-	ns.Blizzard.SetRecipesTabSelected(not open)
 	local before = ns.Blizzard.LastTab()
 	if listTab.before ~= before then
 		listTab.before = before
@@ -1291,17 +1495,16 @@ function BestCraftsList.HeaderSpace()
 	return ledgerButton and ledgerButton:IsShown() and (ledgerButton:GetWidth() + LEDGER_GAP) or 0
 end
 
--- Whether you opened the list and haven't closed it: switching profession hides
--- it only until the new profession's recipes show. Closing the profession window
--- forgets it.
+-- Whether you opened the list and haven't closed it, and which profession it last scanned.
 local wantOpen = false
--- The profession the list last opened on.
 local openFor
 
 function BestCraftsList.Show()
-	if not (list and canShow()) then return false end
+	createList()
+	if not canShow() then return false end
 	wantOpen, openFor = true, ns.Blizzard.ShownBaseProfession()
 	list:Show()
+	if list.Raise then list:Raise() end
 	BestCraftsList.UpdateTab()
 	ns.BestCrafts.Scan()
 	BestCraftsList.Render()
@@ -1314,7 +1517,7 @@ function BestCraftsList.IsShown()
 	return list ~= nil and list:IsVisible()
 end
 
--- Closes the list, as you asked: the tab, a recipe from it, the minimap button.
+-- Closes the window, as you asked: the X button, Escape, the tab, the minimap button.
 function BestCraftsList.Hide()
 	if not list then return end
 	wantOpen = false
@@ -1323,34 +1526,32 @@ function BestCraftsList.Hide()
 	BestCraftsList.UpdateTab()
 end
 
--- Opens the list again once it can show (the new profession's recipes are up),
--- if you still want it. Gives up after a few seconds.
-local function reopenSoon()
+-- Scans the newly opened profession once it finishes loading, while the window is open.
+local function rescanSoon()
 	local tries = 0
 	local function try()
-		if not wantOpen or list:IsShown() then return end
-		if BestCraftsList.Show() then return end
+		if not wantOpen or not (list and list:IsShown()) then return end
+		if canShow() then
+			openFor = ns.Blizzard.ShownBaseProfession()
+			ns.BestCrafts.Scan()
+			BestCraftsList.Render()
+			BestCraftsList.UpdateTab()
+			return
+		end
 		tries = tries + 1
 		if tries < REOPEN_TRIES then C_Timer.After(OPEN_RETRY, try) end
 	end
 	C_Timer.After(0, try)
 end
 
--- Hides the list for something you didn't ask to close it for: another
--- profession, or the window's layout. It comes back when it can.
-local function hideForNow()
-	if list:IsShown() then
-		list:Hide()
-		GameTooltip:Hide()
-		BestCraftsList.UpdateTab()
-	end
-	if wantOpen then reopenSoon() end
-end
-
--- The tab, from any page of the profession window.
+-- The tab, from any page of the profession window: toggles the window.
 local function openFromTab()
+	if list and list:IsShown() then
+		BestCraftsList.Hide()
+		return
+	end
 	if BestCraftsList.Show() or not ns.Blizzard.IsOwnProfession() then return end
-	-- From another page: back to the recipes, and the list once they show.
+	-- From another page: back to the recipes, and show once they load.
 	ns.Blizzard.ShowRecipesTab()
 	local tries = 0
 	local function try()
@@ -1361,34 +1562,40 @@ local function openFromTab()
 	C_Timer.After(0, try)
 end
 
--- The crafting page showed another recipe. In another profession that's the
--- switch (the list comes back for it); in the same one it's a recipe you opened,
--- from a link or the list, so the list closes.
+-- The crafting page showed another recipe. Switching to another profession
+-- rescans the new profession while keeping the standalone window open; picking a
+-- recipe in the same profession leaves the list open side-by-side.
 local function onSelectRecipe()
-	if ns.Blizzard.ShownBaseProfession() ~= openFor then hideForNow() else BestCraftsList.Hide() end
+	if list and list:IsShown() and canShow() and ns.Blizzard.ShownBaseProfession() ~= openFor then
+		openFor = ns.Blizzard.ShownBaseProfession()
+		ns.BestCrafts.Scan()
+		BestCraftsList.Render()
+	end
 end
 
--- The crafting page switched view, showed or hid: the list only fits the full
--- view, and comes back when it fits again.
+-- The crafting page switched view, showed or hid: keep the panel's button and
+-- tab state updated, and rescan if the window is open on a new profession.
 local function onLayout()
-	if list:IsShown() and not canShow() then
-		hideForNow()
-	elseif wantOpen and not list:IsShown() and canShow() then
-		reopenSoon()
+	BestCraftsList.UpdateTab()
+	if list and list:IsShown() and wantOpen and not canShow() then
+		rescanSoon()
+	elseif list and list:IsShown() and canShow() and ns.Blizzard.ShownBaseProfession() ~= openFor then
+		openFor = ns.Blizzard.ShownBaseProfession()
+		ns.BestCrafts.Scan()
+		BestCraftsList.Render()
 	end
-	-- The panel shows the button, and leaves room for it.
 	ns.Panel.Refresh()
 end
 
 local function showTabTooltip(self)
 	GameTooltip:SetOwner(self, self.side and "ANCHOR_RIGHT" or "ANCHOR_TOP")
 	GameTooltip:SetText("Best crafts")
-	GameTooltip:AddLine("Every recipe you know in this profession, most profitable first.", 1, 1, 1, true)
+	GameTooltip:AddLine("Every recipe you know in this profession, in its own resizable window.", 1, 1, 1, true)
 	GameTooltip:Show()
 end
 
 -- Forever's profession window has no tab bar: a side tab under its profession
--- tabs instead. A click opens the list, or closes it when it's open.
+-- tabs instead. A click opens the window, or closes it when it's open.
 local function createSideTab()
 	listTab = CreateFrame("Frame", nil, ProfessionsFrame, "LargeSideTabButtonTemplate")
 	listTab.side = true
@@ -1399,12 +1606,11 @@ local function createSideTab()
 	listTab:Hide()
 	listTab:SetCustomOnMouseUpHandler(function(_, button, upInside)
 		if button ~= "LeftButton" or upInside == false then return end
-		if list:IsShown() then BestCraftsList.Hide() else openFromTab() end
+		if list and list:IsShown() then BestCraftsList.Hide() else openFromTab() end
 	end)
 	listTab:SetScript("OnEnter", showTabTooltip)
 	listTab:SetScript("OnLeave", GameTooltip_Hide)
-	-- Another profession's tab: the list comes back for it.
-	ns.Blizzard.WatchSideTabs(hideForNow, BestCraftsList.UpdateTab)
+	ns.Blizzard.WatchSideTabs(rescanSoon, BestCraftsList.UpdateTab)
 end
 
 -- The tab after the profession window's own.
@@ -1419,7 +1625,7 @@ local function createTab()
 	listTab:SetScript("OnClick", openFromTab)
 	listTab:SetScript("OnEnter", showTabTooltip)
 	listTab:SetScript("OnLeave", GameTooltip_Hide)
-	ns.Blizzard.WatchTabs(BestCraftsList.Hide, BestCraftsList.UpdateTab)
+	ns.Blizzard.WatchTabs(BestCraftsList.UpdateTab, BestCraftsList.UpdateTab)
 end
 
 -- The button at the top of the panel, left of its gear.
@@ -1443,14 +1649,13 @@ local function createLedgerButton()
 	ledgerButton:SetScript("OnLeave", GameTooltip_Hide)
 end
 
--- Creates the tab, the panel's button and the list. Safe to call more than once; needs the panel.
+-- Creates the window, the tab and the panel's button. Safe to call more than once; needs the panel.
 function BestCraftsList.Init()
 	if list or not (ns.Blizzard.IsLoaded() and ns.Panel.Frame()) then return end
 	createList()
 	createTab()
 	createLedgerButton()
-	ns.BestCrafts.Watch(BestCraftsList.Refresh, function() return list:IsShown() end)
+	ns.BestCrafts.Watch(BestCraftsList.Refresh, function() return list ~= nil and list:IsShown() end)
 	ns.Blizzard.WatchCraftingPage(onSelectRecipe, onLayout)
-	ns.Blizzard.WatchWindowClosed(function() wantOpen = false end)
 	ns.Panel.Refresh()
 end

@@ -576,10 +576,9 @@ end
 -- Sorting by a column
 ---------------------------------------------------------------------------
 
--- Whether TSM is there to say an item's sale rate: only then does the list have
--- that column.
+-- Whether TSM or personal auction history is there to say an item's sale rate.
 local function hasRates()
-	return TSM_API ~= nil and TSM_API.GetCustomPriceValue ~= nil
+	return ns.Prices.HasSaleRate()
 end
 
 -- What a line is sorted by, for each column but the name. Your price addon may
@@ -645,10 +644,12 @@ end
 -- first or Z to A, up for lowest first or A to Z.
 local function drawHeaders()
 	local sorted, ascending = sortOrder()
+	local rated = hasRates()
+	if headers.rate then headers.rate:SetShown(rated) end
 	local right = -(SCROLLBAR_ROOM + 8) -- a line's right edge, then its amount
 	for _, key in ipairs({ "amount", "rate", "price" }) do
 		local header = headers[key]
-		if header then
+		if header and (key ~= "rate" or rated) then
 			local width = columnWidth(key)
 			header:ClearAllPoints()
 			header:SetPoint("BOTTOMRIGHT", bagInset, "TOPRIGHT", right, 1)
@@ -1128,6 +1129,7 @@ local function refresh()
 	if open then
 		scanTries = 0
 		guarded(followPages)
+		drawHeaders()
 		if not selected then choose(nil) end
 		scan()
 		-- Nothing picked here, but an item is already on the game's sell page: that one.
@@ -1235,7 +1237,7 @@ local function createLists(width, y)
 	-- The columns' names, over the columns of a bag line (see drawHeaders).
 	createHeader("name", "Item")
 	createHeader("price", "Price")
-	if hasRates() then createHeader("rate", "Sale rate") end
+	createHeader("rate", "Sale rate")
 	createHeader("amount", "Amount")
 	drawHeaders()
 	emptyText = body:CreateFontString(nil, "OVERLAY", "GameFontHighlight")

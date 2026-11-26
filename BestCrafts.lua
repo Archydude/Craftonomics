@@ -456,7 +456,9 @@ local function marketOf(link)
 		found = {}
 		found.listed, found.listedAge = ns.Prices.Listed(link)
 		found.soldPerDay = ns.Prices.SoldPerDay(link)
-		found.saleRate = ns.Prices.HasSaleRate() and ns.Prices.SaleRate(link) or nil
+		if ns.Prices.HasSaleRate() then
+			found.saleRate, found.saleRateFrom, found.saleRateSold, found.saleRateTotal = ns.Prices.SaleRate(link)
+		end
 		found.trend = ns.Prices.Trend(link)
 		market[link] = found
 	end
@@ -651,7 +653,9 @@ local function priceEntry(entry)
 	if row.output then
 		local found = marketOf(row.output.link)
 		row.listed, row.listedAge, row.soldPerDay = found.listed, found.listedAge, found.soldPerDay
-		row.saleRate, row.trend = found.saleRate, found.trend
+		row.saleRate, row.saleRateFrom, row.saleRateSold, row.saleRateTotal =
+			found.saleRate, found.saleRateFrom, found.saleRateSold, found.saleRateTotal
+		row.trend = found.trend
 	end
 
 	-- WoW Forever: what a skill point costs with it. The game only knows your skill
@@ -792,10 +796,13 @@ local MAX_RETURN_WEIGHT = 4
 -- or with those options on, less of it the worse what it makes sells, and more
 -- or less of it with its return on `cost`, its materials'. A loss counts as it
 -- is, and the sale rate leaves a profit as it is when TSM has no rate for it.
-local function scoreOf(profit, saleRate, cost)
+local function scoreOf(profit, saleRate, cost, rateFrom, rateTotal)
 	if profit <= 0 then return profit end
 	local score = profit
-	if ns.db.tipBestWeigh and saleRate then score = score * math.min(saleRate / FULL_SALE_RATE, 1) end
+	local minSamples = ns.Sales and ns.Sales.MIN_DECISION_SAMPLES or 3
+	if ns.db.tipBestWeigh and saleRate and (rateFrom == "tsm" or (rateTotal or 0) >= minSamples) then
+		score = score * math.min(saleRate / FULL_SALE_RATE, 1)
+	end
 	if ns.db.tipBestReturn then
 		local weight = (cost or 0) > 0 and profit / cost / EVEN_RETURN or MAX_RETURN_WEIGHT
 		score = score * math.min(weight, MAX_RETURN_WEIGHT)
@@ -834,9 +841,10 @@ local function bestFrom(itemID, onPath, depth)
 		else
 			-- Crafted and sold.
 			local profit = ns.db.countProcs and row.expected or row.profit
-			local score = profit and scoreOf(profit, row.saleRate, row.cost)
+			local score = profit and scoreOf(profit, row.saleRate, row.cost, row.saleRateFrom, row.saleRateTotal)
 			if score and row.unpriced == 0 and beats(score, 1, found) then
 				found = { profit = profit, cost = row.cost, score = score, saleRate = row.saleRate,
+					saleRateFrom = row.saleRateFrom, saleRateSold = row.saleRateSold, saleRateTotal = row.saleRateTotal,
 					steps = { chainStep(entry, row) } }
 			end
 			-- Or crafted and put into another craft.
@@ -850,7 +858,8 @@ local function bestFrom(itemID, onPath, depth)
 						local steps = { chainStep(entry, row) }
 						for _, step in ipairs(further.steps) do steps[#steps + 1] = step end
 						found = { profit = further.profit, cost = further.cost, score = further.score,
-							saleRate = further.saleRate, steps = steps }
+							saleRate = further.saleRate, saleRateFrom = further.saleRateFrom,
+							saleRateSold = further.saleRateSold, saleRateTotal = further.saleRateTotal, steps = steps }
 					end
 				end
 			end

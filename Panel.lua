@@ -1337,17 +1337,24 @@ end
 local function drawDemand(output, marketRow)
 	if not output.link then return end
 	if ns.Prices.HasSaleRate() then
-		local rate = ns.Prices.SaleRate(output.link)
-		marketRow("Sale rate " .. Color("muted", "(TSM)"), rate and ns.Format.SaleRate(rate) or Color("muted", "-"))
+		local rate, rateFrom, sold, total = ns.Prices.SaleRate(output.link, output.itemID)
+		local tsm = (rateFrom or ns.Prices.SaleRateSource()) == "tsm"
+		local label = tsm and ("Sale rate " .. Color("muted", "(TSM)")) or "Your sale rate"
+		local value = rate and ns.Format.SaleRate(rate) or Color("muted", "-")
+		if rate and not tsm and sold and total then
+			value = value .. " " .. Color("muted", format("(%d/%d)", sold, total))
+		end
+		marketRow(label, value)
 	elseif ns.Prices.HasTSM() then
 		local perDay = ns.Prices.SoldPerDay(output.link)
 		local text = perDay and (perDay < 10 and format("%.1f", perDay) or BreakUpLargeNumbers(math.floor(perDay + 0.5)))
 		marketRow("Sells per day " .. Color("muted", "(TSM)"), text or Color("muted", "-"))
 	end
-	-- How far its market value is from its historical price, as TSM's tooltip shows it.
+	-- How far its market value is from its historical price, from TSM or scan history.
 	if ns.Prices.HasTrend() then
-		local trend = ns.Prices.Trend(output.link)
-		marketRow("Trend " .. Color("muted", "(TSM)"), trend and ns.Format.Trend(trend) or Color("muted", "-"))
+		local trend, trendFrom = ns.Prices.Trend(output.link, output.itemID)
+		local label = (trendFrom or ns.Prices.TrendSource()) == "tsm" and ("Trend " .. Color("muted", "(TSM)")) or "Trend"
+		marketRow(label, trend and ns.Format.Trend(trend) or Color("muted", "-"))
 	end
 end
 
@@ -1371,8 +1378,11 @@ local function drawDeposit(model, marketRow)
 	local qty = math.max(math.floor(output.made * count + 0.5), 1)
 	local deposit = ns.Prices.Deposit(output.itemID, duration, qty)
 	if not deposit or deposit < HIGH_DEPOSIT * profit then return end
-	local rate = ns.Prices.HasSaleRate() and ns.Prices.SaleRate(output.link) or nil
-	if rate and rate >= LOW_SALE_RATE then return end
+	local rate, rateFrom, sold, total
+	if ns.Prices.HasSaleRate() then rate, rateFrom, sold, total = ns.Prices.SaleRate(output.link, output.itemID) end
+	local minSamples = ns.Sales and ns.Sales.MIN_DECISION_SAMPLES or 3
+	local trustedRate = rate and (rateFrom == "tsm" or (total or 0) >= minSamples)
+	if trustedRate and rate >= LOW_SALE_RATE then return end
 	local share = math.floor(deposit / profit * 100 + 0.5)
 	marketRow(Color("missing", "High AH deposit ") .. Color("muted", format("(%s)", durations[duration])),
 		Color("missing", Money(deposit)), nil, nop, function(tip)
@@ -1381,13 +1391,72 @@ local function drawDeposit(model, marketRow)
 				.. "the profit.", craftsText(), durations[duration], Money(deposit), share), 1, 1, 1, true)
 			tip:AddLine("You get it back when the auction sells, and lose it when it runs out unsold.", 1, 1, 1, true)
 			if rate then
-				tip:AddLine("TSM's sale rate for it: " .. ns.Format.SaleRate(rate), 1, 1, 1)
-				tip:AddLine(format("Shown from %d%% of the profit, when the sale rate is under %d%%.", HIGH_DEPOSIT * 100,
-					LOW_SALE_RATE * 100), 0.53, 0.53, 0.53, true)
+				local prefix = rateFrom == "tsm" and "TSM's sale rate for it: " or "Your sale rate for it: "
+				local value = ns.Format.SaleRate(rate)
+				if rateFrom ~= "tsm" and sold and total then
+					value = value .. " " .. Color("muted", format("(%d/%d)", sold, total))
+				end
+				tip:AddLine(prefix .. value, 1, 1, 1)
+				if trustedRate then
+					tip:AddLine(format("Shown from %d%% of the profit, when the sale rate is under %d%%.", HIGH_DEPOSIT * 100,
+						LOW_SALE_RATE * 100), 0.53, 0.53, 0.53, true)
+				else
+					tip:AddLine(format("Shown from %d%% of the profit (needs %d+ finished auctions to hide).", HIGH_DEPOSIT * 100,
+						minSamples), 0.53, 0.53, 0.53, true)
+				end
 			else
 				tip:AddLine(format("Shown from %d%% of the profit.", HIGH_DEPOSIT * 100), 0.53, 0.53, 0.53)
 			end
 		end)
+end
+
+-- Expected AH deposit lost before selling (from sale rate): deposit * (1/rate - 1).
+local function drawExpectedDeposit(model, marketRow)
+	if not ns.db.panelExpectedDeposit then return end
+	local output = model.output
+	if not (output and output.itemID and output.sale) then return end
+	local durations = ns.AUCTION_DURATIONS
+	local duration = durations[ns.db.sellDuration] and ns.db.sellDuration or #durations
+	local qty = math.max(math.floor(output.made * count + 0.5), 1)
+	local deposit = ns.Prices.Deposit(output.itemID, duration, qty)
+	if not deposit then return end
+	if not ns.Prices.HasSaleRate() then return end
+	local rate, rateFrom, sold, total = ns.Prices.SaleRate(output.link, output.itemID)
+	local minSamples = ns.Sales and ns.Sales.MIN_DECISION_SAMPLES or 3
+	if not (rate and rate > 0 and (rateFrom == "tsm" or (total or 0) >= minSamples)) then return end
+	local expected = ns.Prices.ExpectedDeposit and ns.Prices.ExpectedDeposit(deposit, rate)
+	if not expected then return end
+	local profit = (model.procs and model.procs.total > 0 and model.expected or model.total or 0) * count
+	local high = profit > 0 and expected >= HIGH_DEPOSIT * profit
+	local label = "Expected deposit " .. Color("muted", format("(%s)", durations[duration]))
+	local value = expected == 0 and Color("muted", "None (100%)")
+		or (high and Color("missing", Money(expected)) or Money(expected))
+	marketRow(label, value, nil, nop, function(tip)
+		tip:SetText("Expected AH deposit")
+		local avgListings = 1 / rate
+		local lostListings = math.max(avgListings - 1, 0)
+		tip:AddLine(format("At a %.0f%% sale rate, selling takes about %.1f listings on average (losing %.1f "
+			.. "deposits, since the final sale refunds yours).", rate * 100, avgListings, lostListings), 1, 1, 1, true)
+		local prefix = rateFrom == "tsm" and "TSM sale rate: " or "Your sale rate: "
+		local rateVal = ns.Format.SaleRate(rate)
+		if rateFrom ~= "tsm" and sold and total then
+			rateVal = rateVal .. " " .. Color("muted", format("(%d/%d)", sold, total))
+		end
+		tip:AddLine(prefix .. rateVal, 1, 1, 1)
+		tip:AddLine(" ")
+		for d = 1, #durations do
+			local dep = ns.Prices.Deposit(output.itemID, d, qty)
+			if dep then
+				local exp = ns.Prices.ExpectedDeposit(dep, rate)
+				tip:AddDoubleLine(durations[d] .. " " .. Color("muted", format("(%s each)", Money(dep))),
+					Money(exp), 1, 1, 1, 1, 1, 1)
+			end
+		end
+		if model.total then
+			tip:AddLine(" ")
+			tip:AddDoubleLine("Profit after expected deposit", signedMoney(profit - expected), 1, 1, 1, 1, 1, 1)
+		end
+	end)
 end
 
 local DISENCHANT_SOURCES = { tsm = "TSM", auctionator = "Auctionator" }
@@ -1472,6 +1541,7 @@ local function drawMarket(model, disenchantDetails)
 	end
 	drawDemand(model.output, marketRow)
 	drawDeposit(model, marketRow)
+	drawExpectedDeposit(model, marketRow)
 	if disenchantDetails then disenchantDetails(marketRow) end
 end
 

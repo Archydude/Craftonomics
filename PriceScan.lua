@@ -23,6 +23,8 @@ local SHRINK_LIMIT = 0.5
 local MIN_FULL = 50
 -- Prices of items no scan has seen for this many days are forgotten.
 local KEEP_DAYS = 30
+-- Daily lowest prices kept per item for Market Value, Historical Price, Trend, and Heatmap.
+local HISTORY_DAYS = 60
 -- A price this many days old or older has no age to show (see Prices.MaterialAge).
 local OLD_DAYS = 21
 -- The scan that starts by itself waits this long after the auction house opens,
@@ -37,12 +39,16 @@ local CHECKED_WAIT = 0.5
 --   prices = "key,price,listed,day;..." with the lowest price in copper, how many
 --     were up in the last full scan (0 when it didn't see the item), and the day
 --     the item was last seen (days since 1970),
+--   historyBase = earliest day number in `history`,
+--   history = "key=off:price,off:price;..." with daily lowest prices over HISTORY_DAYS,
 -- }
 -- A key is the itemID, "itemID@itemLevel" for gear (as SavedPrices.SaleKey), or
 -- "p" and the species for a caged battle pet.
 -- CraftonomicsDB.vendorSeen[itemID] = what a vendor sells one for, in copper.
 local realm, save
 local prices, counts, days -- key -> lowest price, how many are up, day last seen
+local history              -- key -> { [day] = lowestPrice }
+local historyVersion = 0
 -- The scan that's running: { items, rows, pages, seen, today, auto, disturbed }.
 -- `rows` is how many lines of the auction house's list it has read, `items` how
 -- many different items those were.
@@ -78,6 +84,20 @@ local function realmName()
 	return first
 end
 
+local function recordHistory(key, day, price)
+	if not (key and day and price and price > 0) then return end
+	history = history or {}
+	local byDay = history[key]
+	if not byDay then
+		byDay = {}
+		history[key] = byDay
+	end
+	if not byDay[day] or price < byDay[day] then
+		byDay[day] = price
+		historyVersion = historyVersion + 1
+	end
+end
+
 -- Unpacks this realm's saved prices, the first time they're needed.
 local function load()
 	if prices then return true end
@@ -85,12 +105,33 @@ local function load()
 	if not realm then return false end
 	CraftonomicsDB.scanPrices = CraftonomicsDB.scanPrices or {}
 	save = CraftonomicsDB.scanPrices[realm]
-	prices, counts, days = {}, {}, {}
+	prices, counts, days, history = {}, {}, {}, {}
 	if save and type(save.prices) == "string" then
 		for key, price, listed, day in save.prices:gmatch("([^,;]+),(%d+),(%d+),(%d+)") do
 			prices[key], counts[key], days[key] = tonumber(price), tonumber(listed), tonumber(day)
 		end
 	end
+	local cutoff = today() - HISTORY_DAYS + 1
+	if save and type(save.history) == "string" then
+		local base = tonumber(save.historyBase) or 0
+		for key, entries in save.history:gmatch("([^=;]+)=([^;]+)") do
+			local byDay
+			for off, price in entries:gmatch("(%d+):(%d+)") do
+				local day, p = base + tonumber(off), tonumber(price)
+				if p and p > 0 and day >= cutoff then
+					byDay = byDay or {}
+					if not byDay[day] or p < byDay[day] then byDay[day] = p end
+				end
+			end
+			if byDay then history[key] = byDay end
+		end
+	else
+		for key, price in pairs(prices) do
+			local day = days[key]
+			if day and day >= cutoff then recordHistory(key, day, price) end
+		end
+	end
+	historyVersion = historyVersion + 1
 	return true
 end
 
@@ -101,6 +142,36 @@ local function pack()
 	end
 	save = save or {}
 	save.prices = table.concat(lines, ";")
+	local cutoff = today() - HISTORY_DAYS + 1
+	local minDay
+	for key, byDay in pairs(history or {}) do
+		local kept = false
+		for day in pairs(byDay) do
+			if day >= cutoff then
+				kept = true
+				if not minDay or day < minDay then minDay = day end
+			else
+				byDay[day] = nil
+			end
+		end
+		if not kept then history[key] = nil end
+	end
+	if minDay then
+		local histLines = {}
+		for key, byDay in pairs(history) do
+			local dayList = {}
+			for day in pairs(byDay) do dayList[#dayList + 1] = day end
+			table.sort(dayList)
+			for i, day in ipairs(dayList) do
+				dayList[i] = format("%.0f:%.0f", day - minDay, byDay[day])
+			end
+			histLines[#histLines + 1] = key .. "=" .. table.concat(dayList, ",")
+		end
+		save.historyBase = minDay
+		save.history = table.concat(histLines, ";")
+	else
+		save.history, save.historyBase = nil, nil
+	end
 	CraftonomicsDB.scanPrices[realm] = save
 end
 
@@ -221,6 +292,46 @@ function PriceScan.Listed(link)
 	return counts[key] or 0, PriceScan.Age() or 0
 end
 
+function PriceScan.HistoryVersion()
+	return historyVersion
+end
+
+-- Whether any daily price history is stored for this realm.
+function PriceScan.HasHistory()
+	return load() and next(history) ~= nil
+end
+
+-- How many distinct days of price history are recorded for this realm.
+function PriceScan.HistoryDays()
+	if not load() then return 0 end
+	local cutoff = today() - HISTORY_DAYS + 1
+	local seen, count = {}, 0
+	for _, byDay in pairs(history) do
+		for day in pairs(byDay) do
+			if day >= cutoff and not seen[day] then
+				seen[day] = true
+				count = count + 1
+			end
+		end
+	end
+	return count
+end
+
+-- Map of day -> lowest price (in copper) for a crafted item or material, plus today's day index.
+function PriceScan.History(link, itemID)
+	if not load() then return end
+	local key = link and ns.SavedPrices and ns.SavedPrices.SaleKey(link, itemID)
+		or (itemID and tostring(itemID))
+		or (link and link:match("item:(%d+)"))
+	return key and history[key] or nil, today()
+end
+
+-- Map of day -> lowest price (in copper) for a material itemID, plus today's day index.
+function PriceScan.MaterialHistory(itemID)
+	if not load() or not itemID then return end
+	return history[tostring(itemID)] or nil, today()
+end
+
 ---------------------------------------------------------------------------
 -- Scanning
 ---------------------------------------------------------------------------
@@ -290,7 +401,10 @@ local function finish(problem)
 		save = save or {}
 		save.time, save.count = time(), done.items
 	end
-	if done.items > 0 then pack() end
+	if done.items > 0 then
+		for key in pairs(done.seen) do recordHistory(key, done.today, prices[key]) end
+		pack()
+	end
 	lastMessage = problem or format("Scan done: %s items.", BreakUpLargeNumbers(done.items))
 	if done.auto or not problem then
 		ns.Shopping.Say(problem and ns.Color("warning", "Price scan: " .. problem)
@@ -314,6 +428,7 @@ local function learned(itemKey, rows, allLevels)
 		prices[key], days[key], checkedAt[key] = price, day, now
 		-- Only the cheapest listings were read, so a higher count from a scan stays.
 		counts[key] = math.max(counts[key] or 0, listed, 1)
+		recordHistory(key, day, price)
 	end
 	local lowest, total, byLevel = nil, 0, {}
 	for _, row in ipairs(rows) do

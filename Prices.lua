@@ -56,7 +56,7 @@ local AUCTIONATOR_SCANS = { "TimeOfLastReplicateScan", "TimeOfLastBrowseScan", "
 -- When Auctionator last scanned the auction house (seconds since 1970), or nil.
 local function auctionatorScanned()
 	local state = Auctionator and Auctionator.SavedState
-	if type(state) ~= "table" then return end
+	if type(state) ~= "table" then return nil end
 	local last = 0
 	for _, key in ipairs(AUCTIONATOR_SCANS) do
 		if type(state[key]) == "number" and state[key] > last then last = state[key] end
@@ -373,27 +373,29 @@ function Prices.CapRanks(sales, maxRank)
 end
 
 -- How many of an item were up for sale the last day Auctionator scanned it, and
--- how many days ago that was (0 is today); nil when it has no count. This reads
--- Auctionator's own price history, which isn't part of its API, so every step
--- is guarded and a change on its side just means no count.
+-- how many days ago that was (0 is today); nil when it has no count. Falls back
+-- to Craftonomics' scan when Auctionator isn't used or has no count.
 function Prices.Listed(link)
-	if Prices.Scanner() == "own" then return ns.PriceScan.Listed(link) end
+	local own = ownScan()
+	if Prices.Scanner() == "own" then return own and own.Listed(link) end
 	local db = Auctionator and Auctionator.Database
 	local utilities = db and Auctionator.Utilities
-	if not (db and db.GetPriceHistory and utilities and Auctionator.Constants) then return end
-	local ok, count, age = pcall(function()
-		local keys
-		utilities.DBKeyFromLink(link, function(found) keys = found end)
-		keys = keys or { utilities.BasicDBKeyFromLink(link) }
-		local today = math.floor((time() - Auctionator.Constants.SCAN_DAY_0) / 86400)
-		for _, key in ipairs(keys) do
-			-- Newest day first.
-			for _, day in ipairs(db:GetPriceHistory(key)) do
-				if day.available then return day.available, today - tonumber(day.rawDay) end
+	if db and db.GetPriceHistory and utilities and Auctionator.Constants then
+		local ok, count, age = pcall(function()
+			local keys
+			utilities.DBKeyFromLink(link, function(found) keys = found end)
+			keys = keys or { utilities.BasicDBKeyFromLink(link) }
+			local today = math.floor((time() - Auctionator.Constants.SCAN_DAY_0) / 86400)
+			for _, key in ipairs(keys) do
+				-- Newest day first.
+				for _, day in ipairs(db:GetPriceHistory(key)) do
+					if day.available then return day.available, today - tonumber(day.rawDay) end
+				end
 			end
-		end
-	end)
-	if ok then return count, age end
+		end)
+		if ok and count then return count, age end
+	end
+	if own then return own.Listed(link) end
 end
 
 -- Standard auction house deposit share of an item's vendor sell price, by
@@ -420,17 +422,29 @@ function Prices.Deposit(itemID, duration, qty)
 	end
 end
 
--- Whether TSM is loaded, whatever the price addon option says (for its sales
--- numbers), or another character's save of its prices is used here.
-function Prices.HasTSM()
+-- Expected deposit copper lost before an item sells at `saleRate`: the final
+-- successful sale refunds its deposit, leaving `deposit * (1/saleRate - 1)`.
+function Prices.ExpectedDeposit(deposit, saleRate)
+	if not (deposit and deposit > 0 and saleRate and saleRate > 0) then return nil end
+	if saleRate >= 1 then return 0 end
+	return math.floor(deposit * (1 - saleRate) / saleRate + 0.5)
+end
+
+-- Whether TSM is loaded, or another character's save of its prices is used here.
+function Prices.TSMInstalled()
 	return (TSM_API ~= nil and TSM_API.GetCustomPriceValue ~= nil)
 		or (ns.SavedPrices.InUse() and ns.SavedPrices.Age() ~= nil)
+end
+
+-- Whether TSM is used for metrics (follows Price addon choice).
+function Prices.HasTSM()
+	return wantsTSM() and Prices.TSMInstalled()
 end
 
 -- Whose scan of the auction house the prices here are as old as: "auctionator",
 -- "own" (Craftonomics'), or nil with TSM's prices, which need none.
 function Prices.Scanner()
-	if tsmAvailable() or Prices.SavedAge() then return end
+	if tsmAvailable() or Prices.SavedAge() then return nil end
 	local api, own = auctionatorAPI(), ownScan()
 	-- With both, the one whose prices come first, once Craftonomics has scanned.
 	if api and not (own and ownFirst() and own.HasPrices()) then return "auctionator" end
@@ -479,70 +493,314 @@ end
 -- There TSM's sale rate pools every ruleset of the region (Normal, PvP...) into one
 -- number. Elsewhere the sale rate shows beside them (see Prices.HasSaleRate).
 function Prices.ShowsSaleRate()
-	return not ns.QUALITY_CRAFTING and TSM_API ~= nil and TSM_API.GetCustomPriceValue ~= nil
+	return not ns.QUALITY_CRAFTING and wantsTSM() and TSM_API ~= nil and TSM_API.GetCustomPriceValue ~= nil
 end
 
--- Whether TSM's sale rate can be shown at all: only with TSM loaded on this
--- character (saved TSM prices don't carry it).
+-- Which source provides sale rate right now: "tsm", "personal", or nil.
+function Prices.SaleRateSource()
+	if wantsTSM() and TSM_API ~= nil and TSM_API.GetCustomPriceValue ~= nil then return "tsm" end
+	if ns.db.provider ~= "tsm" and ns.Sales and ns.Sales.HasSaleRate and ns.Sales.HasSaleRate() then return "personal" end
+end
+
+-- Whether sale rate can be shown (from TSM, or from your own auction mail history).
 function Prices.HasSaleRate()
-	return TSM_API ~= nil and TSM_API.GetCustomPriceValue ~= nil
+	return Prices.SaleRateSource() ~= nil
 end
 
--- The share of an item's auctions that sell across the region, from TSM (0.42
--- for 42%), or nil without TSM or a number. Asked for a thousand times, like
--- Prices.SoldPerDay, since TSM rounds to whole numbers.
-function Prices.SaleRate(link)
-	if not (TSM_API and TSM_API.GetCustomPriceValue) then return end
-	local ok, itemString = pcall(TSM_API.ToItemString, link)
-	if not (ok and itemString) then return end
-	local value = tsmValue("dbregionsalerate*1000", itemString)
-	return value and value / 1000
+local function itemNameFromLink(link, itemID)
+	local id = itemID or (type(link) == "string" and tonumber(link:match("item:(%d+)")))
+	local name = id and C_Item.GetItemNameByID(id)
+	if name and name ~= "" then return name end
+	if link and C_Item.GetItemInfo then
+		local ok, infoName = pcall(C_Item.GetItemInfo, link)
+		if ok and infoName and infoName ~= "" then return infoName end
+	end
+	if type(link) == "string" then
+		local bracketed = link:match("%[(.-)%]")
+		if bracketed then
+			bracketed = bracketed:gsub("|A.-|a", ""):gsub("|T.-|t", ""):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
+			bracketed = strtrim(bracketed)
+			if bracketed ~= "" then return bracketed end
+		end
+	end
 end
 
--- Whether TSM's trend can be shown at all: only with TSM loaded on this
--- character (saved TSM prices don't carry the historical price).
-function Prices.HasTrend()
-	return TSM_API ~= nil and TSM_API.GetCustomPriceValue ~= nil
+-- The share of an item's auctions that sell (0..1), plus source ("tsm" | "personal")
+-- and (for personal) sold and total finished auction counts.
+function Prices.SaleRate(link, itemID)
+	if wantsTSM() and TSM_API and TSM_API.GetCustomPriceValue then
+		local ok, itemString = pcall(TSM_API.ToItemString, link)
+		if not (ok and itemString) then return end
+		local value = tsmValue("dbregionsalerate*1000", itemString)
+		if value then return value / 1000, "tsm" end
+		return
+	end
+	if ns.db.provider ~= "tsm" and ns.Sales and ns.Sales.SaleRate then
+		local name = itemNameFromLink(link, itemID)
+		if name then
+			local rate, sold, total = ns.Sales.SaleRate(name)
+			if rate then return rate, "personal", sold, total end
+		end
+	end
 end
 
--- How far an item's market value on your realm is from its historical price,
--- from TSM, in whole percent (-20 for 20% below it), or nil without TSM or
--- either price. The number TSM's own tooltip shows beside its market value,
--- rounded the same way, whatever TSM price type prices are taken from here.
-function Prices.Trend(link)
-	local market, historical = Prices.MarketAndHistorical(link)
-	if not historical then return end
-	return math.floor((market - historical) * 100 / historical + 0.5)
+-- Windows and outlier rejection thresholds for in-game Market Value & Historical Price.
+local MARKET_DAYS = 14
+local HISTORICAL_DAYS = 60
+local OUTLIER_LOW, OUTLIER_HIGH = 0.25, 2.5
+
+local historyCache, historyCacheStamp
+
+local function trimmedAverage(points, weighted)
+	local n = #points
+	if n == 0 then return end
+	if n == 1 then return math.floor(points[1].price + 0.5) end
+	local sorted = {}
+	for i, point in ipairs(points) do sorted[i] = point.price end
+	table.sort(sorted)
+	local median = n % 2 == 1 and sorted[(n + 1) / 2] or (sorted[n / 2] + sorted[n / 2 + 1]) / 2
+	local low, high = 0, math.huge
+	if n >= 3 then
+		low, high = median * OUTLIER_LOW, median * OUTLIER_HIGH
+	end
+	local sum, weightTotal = 0, 0
+	for _, point in ipairs(points) do
+		if point.price >= low and point.price <= high then
+			local w = weighted and (MARKET_DAYS - point.age) or 1
+			sum = sum + point.price * w
+			weightTotal = weightTotal + w
+		end
+	end
+	if weightTotal <= 0 then return math.max(math.floor(median + 0.5), 1) end
+	return math.max(math.floor(sum / weightTotal + 0.5), 1)
 end
 
--- An item's market value on your realm and its historical price, from TSM, in
--- copper: both, or nothing without TSM or either price. What the trend is made of.
-function Prices.MarketAndHistorical(link)
-	if not (TSM_API and TSM_API.GetCustomPriceValue) then return end
-	local ok, itemString = pcall(TSM_API.ToItemString, link)
-	if not (ok and itemString) then return end
-	local market = tsmValue("dbmarket", itemString)
-	local historical = market and tsmValue("dbhistorical", itemString)
-	if not historical then return end
+-- Computes 14-day recency-weighted Market Value and 60-day Historical Price from day -> lowestPrice.
+local function computeMarketAndHistorical(byDay, todayDay)
+	if type(byDay) ~= "table" or not todayDay then return end
+	local marketPoints, histPoints = {}, {}
+	local minAge, maxAge
+	for day, price in pairs(byDay) do
+		if type(day) == "number" and type(price) == "number" and price > 0 then
+			local age = todayDay - day
+			if age >= 0 and age < HISTORICAL_DAYS then
+				local point = { age = age, price = price }
+				histPoints[#histPoints + 1] = point
+				if not minAge or age < minAge then minAge = age end
+				if not maxAge or age > maxAge then maxAge = age end
+				if age < MARKET_DAYS then marketPoints[#marketPoints + 1] = point end
+			end
+		end
+	end
+	local hasHistorical = #histPoints >= 3 and (maxAge - minAge) >= 2
+	local hasMarket = #marketPoints >= 2 or (#marketPoints >= 1 and hasHistorical)
+	local market = hasMarket and trimmedAverage(marketPoints, true) or nil
+	local historical = (market and hasHistorical) and trimmedAverage(histPoints, false) or nil
 	return market, historical
 end
 
+local function hasAuctionatorHistory()
+	return auctionatorAPI() ~= nil
+		and Auctionator.Database ~= nil
+		and Auctionator.Database.GetPriceHistory ~= nil
+		and Auctionator.Utilities ~= nil
+		and Auctionator.Constants ~= nil
+		and Auctionator.Constants.SCAN_DAY_0 ~= nil
+end
+
+local function auctionatorHistory(link, itemID)
+	if not hasAuctionatorHistory() then return end
+	local db, utilities = Auctionator.Database, Auctionator.Utilities
+	local target = link or (itemID and ("item:" .. itemID))
+	if not target then return end
+	local ok, byDay, todayDay = pcall(function()
+		local keys
+		utilities.DBKeyFromLink(target, function(found) keys = found end)
+		keys = keys or { utilities.BasicDBKeyFromLink(target) }
+		if #keys == 0 and itemID then keys = { tostring(itemID) } end
+		local today = math.floor((time() - Auctionator.Constants.SCAN_DAY_0) / 86400)
+		for _, key in ipairs(keys) do
+			local entries = db:GetPriceHistory(key)
+			if type(entries) == "table" and #entries > 0 then
+				local map = {}
+				for _, entry in ipairs(entries) do
+					local day = tonumber(entry.rawDay)
+					local price = tonumber(entry.minSeen)
+					if day and price and price > 0 then
+						local age = today - day
+						if age >= 0 and age < HISTORICAL_DAYS then
+							if not map[day] or price < map[day] then map[day] = price end
+						end
+					end
+				end
+				if next(map) then return map, today end
+			end
+		end
+	end)
+	if ok and byDay then return byDay, todayDay end
+end
+
+local function historyStats(link, itemID)
+	if not (link or itemID) then return end
+	local own = ownScan()
+	local stamp = string.format("%d:%s:%s:%d:%s",
+		math.floor(time() / 86400),
+		tostring(ns.db.provider),
+		tostring(ns.db.ahPrice),
+		ns.PriceScan and ns.PriceScan.HistoryVersion() or 0,
+		tostring(auctionatorScanned() or 0))
+	if historyCacheStamp ~= stamp then
+		historyCacheStamp = stamp
+		historyCache = {}
+	end
+	local cacheKey = link or ("i:" .. tostring(itemID))
+	local cached = historyCache[cacheKey]
+	if cached then
+		return cached.market or nil, cached.historical or nil, cached.source or nil
+	end
+
+	local function tryOwn()
+		if not (own and own.History) then return end
+		local byDay, todayDay = own.History(link, itemID)
+		if byDay then
+			local m, h = computeMarketAndHistorical(byDay, todayDay)
+			if m then return m, h, "own" end
+		end
+	end
+	local function tryAuct()
+		local byDay, todayDay = auctionatorHistory(link, itemID)
+		if byDay then
+			local m, h = computeMarketAndHistorical(byDay, todayDay)
+			if m then return m, h, "auctionator" end
+		end
+	end
+
+	local market, historical, source
+	if ownFirst() then
+		market, historical, source = tryOwn()
+		if not market then market, historical, source = tryAuct() end
+	else
+		market, historical, source = tryAuct()
+		if not market then market, historical, source = tryOwn() end
+	end
+	historyCache[cacheKey] = {
+		market = market or false,
+		historical = historical or false,
+		source = source or false,
+	}
+	return market, historical, source
+end
+
+local function currentLowest(link, itemID)
+	local fresh, freshFrom = freshSale(link, itemID, LOWEST)
+	if fresh then return fresh, freshFrom end
+	local api, own = auctionatorAPI(), ownScan()
+	local function ownLowest()
+		if own and (own.SaleInLastScan(link, itemID) or own.SaleChecked(link, itemID)) then
+			return own.Sale(link, itemID), "own"
+		end
+	end
+	local function auctLowest()
+		if not api then return end
+		local value = auctionatorValue(api.GetAuctionPriceByItemLink, link)
+			or (itemID and auctionatorValue(api.GetAuctionPriceByItemID, itemID))
+		if not value then return end
+		local scanAt = auctionatorScanned()
+		if scanAt then
+			local src = { at = scanAt, seconds = math.max(time() - scanAt, 0) }
+			if api.GetAuctionAgeByItemLink then
+				local ok, age = pcall(api.GetAuctionAgeByItemLink, ADDON_NAME, link)
+				if ok and type(age) == "number" then
+					if not auctionatorSaw(api.GetAuctionAgeByItemLink, link, src) then return end
+				elseif itemID and api.GetAuctionAgeByItemID then
+					local okID, ageID = pcall(api.GetAuctionAgeByItemID, ADDON_NAME, itemID)
+					if okID and type(ageID) == "number" and not auctionatorSaw(api.GetAuctionAgeByItemID, itemID, src) then return end
+				end
+			elseif itemID and api.GetAuctionAgeByItemID then
+				local okID, ageID = pcall(api.GetAuctionAgeByItemID, ADDON_NAME, itemID)
+				if okID and type(ageID) == "number" and not auctionatorSaw(api.GetAuctionAgeByItemID, itemID, src) then return end
+			end
+		end
+		return value, "auctionator"
+	end
+	if ownFirst() then
+		local value, from = ownLowest()
+		if value then return value, from end
+		return auctLowest()
+	end
+	local value, from = auctLowest()
+	if value then return value, from end
+	return ownLowest()
+end
+
+-- Which source provides Market Value and Trend right now: "tsm", "auctionator", "own", or nil.
+function Prices.TrendSource()
+	if wantsTSM() and TSM_API ~= nil and TSM_API.GetCustomPriceValue ~= nil then return "tsm" end
+	local hasAuct = hasAuctionatorHistory()
+	local hasOwn = ownScan() ~= nil and ns.PriceScan ~= nil and ns.PriceScan.HasHistory()
+	if hasOwn and (ownFirst() or not hasAuct) then return "own" end
+	if hasAuct then return "auctionator" end
+	if hasOwn then return "own" end
+end
+
+-- Whether trend / market value can be shown: with TSM, Auctionator history, or Craftonomics' scan history.
+function Prices.HasTrend()
+	return Prices.TrendSource() ~= nil
+end
+
+-- An item's 14-day Market Value, in copper, and its source ("tsm", "auctionator", or "own").
+function Prices.MarketValue(link, itemID)
+	if wantsTSM() and TSM_API and TSM_API.GetCustomPriceValue then
+		local ok, itemString = pcall(TSM_API.ToItemString, link)
+		local market = ok and itemString and tsmValue("dbmarket", itemString)
+		if market then return market, "tsm" end
+		if ns.db.provider == "tsm" then return end
+	end
+	local market, _, source = historyStats(link, itemID)
+	if market then return market, source end
+end
+
+-- How far an item's market value on your realm is from its historical price,
+-- in whole percent (-20 for 20% below it), plus its source ("tsm", "auctionator", or "own").
+function Prices.Trend(link, itemID)
+	local market, historical, source = Prices.MarketAndHistorical(link, itemID)
+	if not historical then return end
+	return math.floor((market - historical) * 100 / historical + 0.5), source
+end
+
+-- An item's market value on your realm and its historical price, in copper, plus its source.
+function Prices.MarketAndHistorical(link, itemID)
+	if wantsTSM() and TSM_API and TSM_API.GetCustomPriceValue then
+		local ok, itemString = pcall(TSM_API.ToItemString, link)
+		local market = ok and itemString and tsmValue("dbmarket", itemString)
+		local historical = market and tsmValue("dbhistorical", itemString)
+		if historical then return market, historical, "tsm" end
+		if ns.db.provider == "tsm" then return end
+	end
+	local market, historical, source = historyStats(link, itemID)
+	if market and historical then return market, historical, source end
+end
+
 -- How far an item's lowest auction on your realm is from its market value, in
--- whole percent (-18 for 18% below it), and where the lowest auction came from:
--- "tsm", "own" (Craftonomics' scan) or "auctionator". The market value is
--- TSM's. The lowest auction is TSM's too, or with Freshest prices the newest
--- one known, which can be a scan's. Nil without TSM or either price (no lowest
--- auction when nobody has one up).
+-- whole percent (-18 for 18% below it), where the lowest auction came from
+-- ("tsm", "own", or "auctionator"), and where the market value came from.
 function Prices.LowestVsMarket(link, itemID)
-	if not (TSM_API and TSM_API.GetCustomPriceValue) then return end
-	local ok, itemString = pcall(TSM_API.ToItemString, link)
-	if not (ok and itemString) then return end
-	local market = tsmValue("dbmarket", itemString)
+	if wantsTSM() and TSM_API and TSM_API.GetCustomPriceValue then
+		local ok, itemString = pcall(TSM_API.ToItemString, link)
+		local market = ok and itemString and tsmValue("dbmarket", itemString)
+		if market then
+			local lowest, from = freshSale(link, itemID, LOWEST)
+			if not lowest then lowest, from = tsmValue(LOWEST, itemString), "tsm" end
+			if not lowest then return end
+			return math.floor((lowest - market) * 100 / market + 0.5), from, "tsm"
+		end
+		if ns.db.provider == "tsm" then return end
+	end
+	local market, marketFrom = Prices.MarketValue(link, itemID)
 	if not market then return end
-	local lowest, from = freshSale(link, itemID, LOWEST)
-	if not lowest then lowest, from = tsmValue(LOWEST, itemString), "tsm" end
+	local lowest, lowestFrom = currentLowest(link, itemID)
 	if not lowest then return end
-	return math.floor((lowest - market) * 100 / market + 0.5), from
+	return math.floor((lowest - market) * 100 / market + 0.5), lowestFrom, marketFrom
 end
 
 -- How many days ago Auctionator last saw an item on the auction house (0 is

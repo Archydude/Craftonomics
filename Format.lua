@@ -87,6 +87,16 @@ function Format.LowestVsMarket(percent)
 	return "Even " .. signed
 end
 
+-- Crafting profit against craft cost (+27 for 27% profit over crafting cost)
+-- as "Craft +27%" in green when crafting profits, "Buy -21%" in light blue
+-- when crafting loses gold, or "Even +1%" in white in between.
+function Format.CraftVsAH(percent)
+	local signed = format("%s%.0f%%", percent > 0 and "+" or "", percent)
+	if percent >= EVEN_PERCENT then return ns.Color("cheap", "Craft " .. signed) end
+	if percent <= -EVEN_PERCENT then return ns.Color("expensive", "Buy " .. signed) end
+	return "Even " .. signed
+end
+
 -- `text` in the color of the item's rarity (green, blue, purple...), or as it is
 -- while the game hasn't loaded the item.
 function Format.RarityColored(itemID, text)
