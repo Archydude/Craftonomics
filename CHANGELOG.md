@@ -1,5 +1,9 @@
 # Changelog
 
+## 5.23.0
+- **Market metrics source (`TSM` / `Craftonomics`):** added a **Market metrics** dropdown on the **Prices** options page (defaults to **TSM**) to choose whether sale rate, sold per day, market value, historical price, and trend come from **TSM** (falling back to Craftonomics when TSM has no data) or always from **Craftonomics'** own scans and sales history — independent of **Price addon**.
+- **Clearer non-profit recipe list modes & panel warning:** **Crafting cost**, **Net skill-up cost**, and **Raw skill-up cost** in the profession recipe list now display in light blue (with a minus sign on costs) so they stand apart from green/red profit and loss. While the list isn't in **Profit** mode, the crafting panel shows a warning banner with an icon — click it to switch the list back to **Profit**.
+
 ## 5.22.1
 - **Two-way craft amount sync:** changing the craft amount (via the `<` / `>` arrows, mouse wheel, or typing) or clicking **Create All** in Blizzard's profession window now updates Craftonomics' **Crafts** box and panel totals to match.
 

@@ -38,7 +38,7 @@ local STRATEGY_KEYS = {
 	craftStrategy = true, concentrationStrategy = true,
 	patronMaterials = true, patronReach = true, concentrationFor = true,
 	countPatronBags = true, countProcs = true, ahCut = true, vendorFloor = true,
-	subtractExpectedDeposit = true, depositDuration = true, provider = true, matSource = true,
+	subtractExpectedDeposit = true, depositDuration = true, provider = true, metricsSource = true, matSource = true,
 	saleSource = true, vendorBuy = true, vendorOnAH = true, chainCooldowns = true,
 }
 
@@ -256,10 +256,17 @@ function Options.Create()
 		"Craftonomics' scan starts by itself at the auction house, at most once an hour, unless Auctionator does " ..
 		"the pricing there (Price with, on the Auction house page). A scan made with TSM in the game doesn't " ..
 		"count as a newer TSM price.\n\n" ..
-		"This choice also controls where market metrics come from (Market Value, Historical Price, Trend, Lowest vs " ..
-		"Market, Sale Rate, Sold per Day, and the Heatmap): picking Auctionator only or Craftonomics' scan only " ..
-		"calculates them from that addon's scan history and your personal sale rate even when TSM is loaded.\n\n" ..
+		"Market metrics (Market Value, Trend, Sale Rate, Sold per Day, and Heatmap) use the Market metrics " ..
+		"setting below.\n\n" ..
 		"The scan runs from the Prices tab of Craftonomics' window at the auction house (/craftonomics prices).")
+	local metricsTip = "Where Market Value, Historical Price, Trend, Lowest vs Market, Sale Rate, Sold per Day, " ..
+		"and the Heatmap come from:\n\n"
+	for _, choice in ipairs(ns.METRICS_SOURCE_CHOICES) do
+		metricsTip = metricsTip .. choice[2] .. ": " .. choice[3] .. "\n\n"
+	end
+	dropdown("metricsSource", "Market metrics", ns.METRICS_SOURCE_CHOICES, metricsTip ..
+		"Doesn't change crafting prices: you can price with Auctionator or Craftonomics' scan and still get " ..
+		"market metrics from TSM (or the other way around).")
 	checkbox("autoScan", "Scan when I open the auction house",
 		"Craftonomics' own price scan starts by itself when you open the auction house.\n\n" ..
 		"Only while your prices come from that scan (not from TSM or Auctionator), or with Freshest prices " ..

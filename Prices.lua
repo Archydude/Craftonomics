@@ -645,9 +645,19 @@ function Prices.TSMInstalled()
 		or (ns.SavedPrices.InUse() and ns.SavedPrices.Age() ~= nil)
 end
 
--- Whether TSM is used for metrics (follows Price addon choice).
+-- Whether the Market metrics option allows TSM ("tsm", the default, allows it; "own" forces local metrics).
+local function metricsWantsTSM()
+	return not (ns.db and ns.db.metricsSource == "own")
+end
+
+-- Whether market metrics may use local scan history / personal sale rate.
+local function metricsAllowsLocal()
+	return (ns.db and ns.db.metricsSource == "own") or not (ns.db and ns.db.provider == "tsm")
+end
+
+-- Whether TSM is used for metrics (follows Market metrics choice).
 function Prices.HasTSM()
-	return wantsTSM() and Prices.TSMInstalled()
+	return metricsWantsTSM() and Prices.TSMInstalled()
 end
 
 -- Whose scan of the auction house the prices here are as old as: "auctionator",
@@ -700,13 +710,13 @@ end
 -- There TSM's sale rate pools every ruleset of the region (Normal, PvP...) into one
 -- number. Elsewhere the sale rate shows beside them (see Prices.HasSaleRate).
 function Prices.ShowsSaleRate()
-	return not ns.QUALITY_CRAFTING and wantsTSM() and TSM_API ~= nil and TSM_API.GetCustomPriceValue ~= nil
+	return not ns.QUALITY_CRAFTING and metricsWantsTSM() and TSM_API ~= nil and TSM_API.GetCustomPriceValue ~= nil
 end
 
 -- Which source provides sale rate right now: "tsm", "personal", or nil.
 function Prices.SaleRateSource()
-	if wantsTSM() and TSM_API ~= nil and TSM_API.GetCustomPriceValue ~= nil then return "tsm" end
-	if ns.db.provider ~= "tsm" and ns.Sales and ns.Sales.HasSaleRate and ns.Sales.HasSaleRate() then return "personal" end
+	if metricsWantsTSM() and TSM_API ~= nil and TSM_API.GetCustomPriceValue ~= nil then return "tsm" end
+	if metricsAllowsLocal() and ns.Sales and ns.Sales.HasSaleRate and ns.Sales.HasSaleRate() then return "personal" end
 end
 
 -- Whether sale rate can be shown (from TSM, or from your own auction mail history).
@@ -735,14 +745,14 @@ end
 -- The share of an item's auctions that sell (0..1), plus source ("tsm" | "personal")
 -- and (for personal) sold and total finished auction counts.
 function Prices.SaleRate(link, itemID)
-	if wantsTSM() and TSM_API and TSM_API.GetCustomPriceValue then
+	if metricsWantsTSM() and TSM_API and TSM_API.GetCustomPriceValue then
 		local ok, itemString = pcall(TSM_API.ToItemString, link)
 		if not (ok and itemString) then return end
 		local value = tsmValue("dbregionsalerate*1000", itemString)
 		if value then return value / 1000, "tsm" end
 		return
 	end
-	if ns.db.provider ~= "tsm" and ns.Sales and ns.Sales.SaleRate then
+	if metricsAllowsLocal() and ns.Sales and ns.Sales.SaleRate then
 		local name = itemNameFromLink(link, itemID)
 		if name then
 			local rate, sold, total = ns.Sales.SaleRate(name)
@@ -804,8 +814,14 @@ local function computeMarketAndHistorical(byDay, todayDay)
 	return market, historical
 end
 
+local function metricsOwnScan()
+	if ns.db and ns.db.metricsSource == "own" then return ns.PriceScan end
+	return ownScan()
+end
+
 local function hasAuctionatorHistory()
-	return auctionatorAPI() ~= nil
+	return (auctionatorAPI() ~= nil or (ns.db and ns.db.metricsSource == "own"))
+		and Auctionator ~= nil
 		and Auctionator.Database ~= nil
 		and Auctionator.Database.GetPriceHistory ~= nil
 		and Auctionator.Utilities ~= nil
@@ -847,10 +863,11 @@ end
 
 local function historyStats(link, itemID)
 	if not (link or itemID) then return end
-	local own = ownScan()
-	local stamp = string.format("%d:%s:%s:%d:%s",
+	local own = metricsOwnScan()
+	local stamp = string.format("%d:%s:%s:%s:%d:%s",
 		math.floor(time() / 86400),
 		tostring(ns.db.provider),
+		tostring(ns.db.metricsSource),
 		tostring(ns.db.ahPrice),
 		ns.PriceScan and ns.PriceScan.HistoryVersion() or 0,
 		tostring(auctionatorScanned() or 0))
@@ -893,7 +910,9 @@ end
 local function currentLowest(link, itemID)
 	local fresh, freshFrom = freshSale(link, itemID, LOWEST)
 	if fresh then return fresh, freshFrom end
-	local api, own = auctionatorAPI(), ownScan()
+	local forceOwn = ns.db and ns.db.metricsSource == "own"
+	local api = auctionatorAPI() or (forceOwn and Auctionator and Auctionator.API and Auctionator.API.v1)
+	local own = metricsOwnScan()
 	local function ownLowest()
 		if own and (own.SaleInLastScan(link, itemID) or own.SaleChecked(link, itemID)) then
 			return own.Sale(link, itemID), "own"
@@ -929,9 +948,10 @@ end
 
 -- Which source provides Market Value and Trend right now: "tsm", "auctionator", "own", or nil.
 function Prices.TrendSource()
-	if wantsTSM() and TSM_API ~= nil and TSM_API.GetCustomPriceValue ~= nil then return "tsm" end
+	if metricsWantsTSM() and TSM_API ~= nil and TSM_API.GetCustomPriceValue ~= nil then return "tsm" end
+	if not metricsAllowsLocal() then return end
 	if hasAuctionatorHistory() then return "auctionator" end
-	if ownScan() ~= nil and ns.PriceScan ~= nil and ns.PriceScan.HasHistory() then return "own" end
+	if metricsOwnScan() ~= nil and ns.PriceScan ~= nil and ns.PriceScan.HasHistory() then return "own" end
 end
 
 -- Whether trend / market value can be shown: with TSM, Auctionator history, or Craftonomics' scan history.
@@ -941,12 +961,13 @@ end
 
 -- An item's 14-day Market Value, in copper, and its source ("tsm", "auctionator", or "own").
 function Prices.MarketValue(link, itemID)
-	if wantsTSM() and TSM_API and TSM_API.GetCustomPriceValue then
+	if metricsWantsTSM() and TSM_API and TSM_API.GetCustomPriceValue then
 		local ok, itemString = pcall(TSM_API.ToItemString, link)
 		local market = ok and itemString and tsmValue("dbmarket", itemString)
 		if market then return market, "tsm" end
-		if ns.db.provider == "tsm" then return end
+		if not metricsAllowsLocal() then return end
 	end
+	if not metricsAllowsLocal() then return end
 	local market, _, source = historyStats(link, itemID)
 	if market then return market, source end
 end
@@ -961,13 +982,14 @@ end
 
 -- An item's market value on your realm and its historical price, in copper, plus its source.
 function Prices.MarketAndHistorical(link, itemID)
-	if wantsTSM() and TSM_API and TSM_API.GetCustomPriceValue then
+	if metricsWantsTSM() and TSM_API and TSM_API.GetCustomPriceValue then
 		local ok, itemString = pcall(TSM_API.ToItemString, link)
 		local market = ok and itemString and tsmValue("dbmarket", itemString)
 		local historical = market and tsmValue("dbhistorical", itemString)
 		if historical then return market, historical, "tsm" end
-		if ns.db.provider == "tsm" then return end
+		if not metricsAllowsLocal() then return end
 	end
+	if not metricsAllowsLocal() then return end
 	local market, historical, source = historyStats(link, itemID)
 	if market and historical then return market, historical, source end
 end
@@ -976,7 +998,7 @@ end
 -- whole percent (-18 for 18% below it), where the lowest auction came from
 -- ("tsm", "own", or "auctionator"), and where the market value came from.
 function Prices.LowestVsMarket(link, itemID)
-	if wantsTSM() and TSM_API and TSM_API.GetCustomPriceValue then
+	if metricsWantsTSM() and TSM_API and TSM_API.GetCustomPriceValue then
 		local ok, itemString = pcall(TSM_API.ToItemString, link)
 		local market = ok and itemString and tsmValue("dbmarket", itemString)
 		if market then
@@ -985,8 +1007,9 @@ function Prices.LowestVsMarket(link, itemID)
 			if not lowest then return end
 			return math.floor((lowest - market) * 100 / market + 0.5), from, "tsm"
 		end
-		if ns.db.provider == "tsm" then return end
+		if not metricsAllowsLocal() then return end
 	end
+	if not metricsAllowsLocal() then return end
 	local market, marketFrom = Prices.MarketValue(link, itemID)
 	if not market then return end
 	local lowest, lowestFrom = currentLowest(link, itemID)

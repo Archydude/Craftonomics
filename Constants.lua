@@ -94,6 +94,9 @@ ns.DEFAULTS = {
 	-- "auto" | "tsm" | "auctionator" | "own" (Craftonomics' scan) | "fresh" (TSM, Auctionator's scan or
 	-- Craftonomics', whichever is newest; see Prices.lua)
 	provider = "auto",
+	-- Market metrics source: "tsm" (TradeSkillMaster, falls back to Craftonomics without TSM) |
+	-- "own" (Craftonomics / Auctionator scan history + personal sale rate)
+	metricsSource = "tsm",
 	matSource = "dbmarket",
 	saleSource = "dbmarket",
 	vendorBuy = "vendor", -- how vendor-sold materials are priced and bought: "vendor" | "ah" | "cheapest" (see VENDOR_BUY_CHOICES)
@@ -398,6 +401,15 @@ ns.LIST_ADDON_CHOICES = {
 -- The shopping list the missing materials button adds to, when the list isn't
 -- named after the character or profession.
 ns.SHOPPING_LIST = "Crafting"
+
+-- Where Market Value, Trend, Lowest vs Market, Sale Rate, Sold per Day, and Heatmap
+-- come from: key, label, and tooltip.
+ns.METRICS_SOURCE_CHOICES = {
+	{ "tsm", "TradeSkillMaster", "Uses TSM for Market Value, Historical Price, Trend, Lowest vs Market, Sale Rate, " ..
+		"Sold per Day, and the Heatmap (falls back to Craftonomics when TSM isn't loaded)." },
+	{ "own", "Craftonomics", "Uses scan history (Auctionator / Craftonomics' scan) for Market Value, Historical " ..
+		"Price, Trend, Lowest vs Market, and the Heatmap, and your personal mailbox Sale Rate — even when TSM is loaded." },
+}
 
 -- Where to price and buy materials a vendor sells: key, label, and tooltip.
 ns.VENDOR_BUY_CHOICES = {

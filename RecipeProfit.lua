@@ -86,20 +86,25 @@ local function profitText(row)
 	return Color(ns.AmountColor(profit), text)
 end
 
--- What the materials for one craft cost, in white (or grey with "?" when any
--- material has no price). Shows for recipes without a sale price too.
-local function costText(row)
-	local cost = row.cost
-	if not cost then return end
-	if (row.unpriced or 0) > 0 then
-		return Color("muted", cost > 0 and (formatAmount(cost) .. "?") or "?")
+-- A material/skill-up cost formatted as a negative amount in light blue (or
+-- muted with "?" when some materials lack prices). Blank when zero/free.
+local function costAmountText(amount, unpriced)
+	if not amount then return end
+	if (unpriced or 0) > 0 then
+		return Color("muted", amount > 0 and (formatAmount(-amount) .. "?") or "?")
 	end
-	if cost <= 0 then return end
-	return formatAmount(cost)
+	if amount <= 0 then return end
+	return Color("simulated", formatAmount(-amount))
 end
 
--- Average net gold cost per skill point on WoW Forever: green "Free" when
--- selling/vendoring covers the craft, red loss otherwise. Blank for grey recipes.
+-- What the materials for one craft cost, in light blue with a minus (or muted
+-- with "?" when any material has no price). Shows for recipes without a sale price too.
+local function costText(row)
+	return costAmountText(row.cost, row.unpriced)
+end
+
+-- Average net gold cost per skill point on WoW Forever, in light blue ("Free"
+-- when selling/vendoring covers the craft). Blank for grey recipes.
 local function skillupText(row)
 	local s = row.skillup
 	if not (s and s.cost) then return end
@@ -107,20 +112,14 @@ local function skillupText(row)
 		if s.cost <= 0 then return Color("muted", "Free?") end
 		return Color("muted", formatAmount(-s.cost) .. "?")
 	end
-	if s.cost <= 0 then return Color("good", "Free") end
-	return Color("loss", formatAmount(-s.cost))
+	if s.cost <= 0 then return Color("simulated", "Free") end
+	return Color("simulated", formatAmount(-s.cost))
 end
 
 -- Average raw material cost per skill point on WoW Forever (materials / chance),
 -- ignoring resale value. Blank for grey recipes or free materials.
 local function rawSkillupText(row)
-	local s = row.skillup
-	if not (s and s.rawCost) then return end
-	if (row.unpriced or 0) > 0 then
-		return Color("muted", s.rawCost > 0 and (formatAmount(s.rawCost) .. "?") or "?")
-	end
-	if s.rawCost <= 0 then return end
-	return formatAmount(s.rawCost)
+	return costAmountText(row.skillup and row.skillup.rawCost, row.unpriced)
 end
 
 local function rowText(row)
@@ -247,6 +246,13 @@ local function showToggleTooltip(self)
 	GameTooltip:Show()
 end
 
+-- The active recipe list metric key and metadata when the list overlay is on.
+function RecipeProfit.ActiveMetric()
+	if not enabled() then return end
+	local m = metric()
+	return m, METRIC_INFO[m]
+end
+
 function RecipeProfit.SetMetric(mode)
 	local valid = false
 	for _, key in ipairs(availableMetrics()) do
@@ -257,6 +263,7 @@ function RecipeProfit.SetMetric(mode)
 		ns.Options.Set("listMetric", mode)
 	else
 		ns.db.listMetric = mode
+		if ns.Panel and ns.Panel.Refresh then ns.Panel.Refresh() end
 	end
 	updateToggle()
 	RecipeProfit.Render()
