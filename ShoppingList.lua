@@ -64,6 +64,7 @@ local tab, panels = "shop", {}
 -- (so closing it closes the window too), and whether the window sits beside the AH.
 local atAuctionHouse, openedByAuctionHouse, docked = false, false, false
 local atMerchant, openedByMerchant, merchantItems = false, false, {}
+local atBank, openedByBank = false, false
 -- The chat hint on how to open the window: once a session.
 local hinted = false
 -- The side button on the game's auction house window, once that window has
@@ -194,6 +195,110 @@ local function merchantHasVendorItem()
 	return false
 end
 
+local function hasBankItem()
+	if ns.Model.CRAFTS_FROM_BANK then return false end
+	for _, list in ipairs(ns.Shopping.OwnLists()) do
+		for _, item in ipairs(list.items) do
+			local inBank = select(2, ns.Model.InBags(item.itemID)) or 0
+			if inBank > 0 then return true end
+		end
+	end
+	return false
+end
+
+local function playerBags()
+	local BagIndex = Enum and Enum.BagIndex or {}
+	local numBags = _G.NUM_TOTAL_EQUIPPED_BAG_SLOTS or _G.NUM_BAG_SLOTS or 4
+	local bags = { BagIndex.Backpack or 0 }
+	for i = 1, numBags do bags[#bags + 1] = BagIndex["Bag_" .. i] or i end
+	if BagIndex.ReagentBag then bags[#bags + 1] = BagIndex.ReagentBag end
+	return bags
+end
+
+local function bankBags()
+	local BagIndex = Enum and Enum.BagIndex or {}
+	local numBags = _G.NUM_TOTAL_EQUIPPED_BAG_SLOTS or _G.NUM_BAG_SLOTS or 4
+	local bags = {}
+	for i = 1, 10 do
+		local id = BagIndex["CharacterBankTab_" .. i]
+		if id then bags[#bags + 1] = id end
+	end
+	if #bags == 0 then
+		bags[1] = BagIndex.Bank or _G.BANK_CONTAINER or -1
+		for i = 1, _G.NUM_BANKBAGSLOTS or 6 do
+			bags[#bags + 1] = BagIndex["BankBag_" .. i] or (numBags + i)
+		end
+		if BagIndex.Reagentbank then bags[#bags + 1] = BagIndex.Reagentbank end
+	end
+	return bags
+end
+
+local function bagCanHold(bag, itemFamily)
+	if not (C_Container and C_Container.GetContainerNumFreeSlots) then return true end
+	local _, bagFamily = C_Container.GetContainerNumFreeSlots(bag)
+	if not bagFamily or bagFamily == 0 then return true end
+	return itemFamily and itemFamily ~= 0 and _G.bit and _G.bit.band(itemFamily, bagFamily) ~= 0 or false
+end
+
+local function findBagDest(itemID, maxStack)
+	local bags = playerBags()
+	if maxStack > 1 then
+		for _, bag in ipairs(bags) do
+			for slot = 1, C_Container.GetContainerNumSlots(bag) or 0 do
+				local info = C_Container.GetContainerItemInfo(bag, slot)
+				if info and info.itemID == itemID and not info.isLocked and (info.stackCount or 1) < maxStack then
+					return bag, slot, maxStack - (info.stackCount or 1)
+				end
+			end
+		end
+	end
+	local itemFamily = C_Item and C_Item.GetItemFamily and C_Item.GetItemFamily(itemID) or 0
+	for _, bag in ipairs(bags) do
+		if bagCanHold(bag, itemFamily) then
+			for slot = 1, C_Container.GetContainerNumSlots(bag) or 0 do
+				if not C_Container.GetContainerItemInfo(bag, slot) then
+					return bag, slot, maxStack
+				end
+			end
+		end
+	end
+end
+
+local function withdrawFromBank(itemID, qty)
+	if not atBank or qty <= 0 then return end
+	if InCombatLockdown and InCombatLockdown() then return end
+	if CursorHasItem and CursorHasItem() then return end
+	if not (C_Container and C_Container.GetContainerNumSlots and C_Container.GetContainerItemInfo) then return end
+	local itemMax = C_Item and C_Item.GetItemInfo and select(8, C_Item.GetItemInfo(itemID))
+	local maxStack = math.max((type(itemMax) == "number" and itemMax) or 1, 1)
+	local remaining = qty
+	for _, bag in ipairs(bankBags()) do
+		for slot = 1, C_Container.GetContainerNumSlots(bag) or 0 do
+			local info = C_Container.GetContainerItemInfo(bag, slot)
+			if info and info.itemID == itemID and not info.isLocked then
+				local have = info.stackCount or 1
+				if have <= remaining and C_Container.UseContainerItem then
+					C_Container.UseContainerItem(bag, slot)
+					remaining = remaining - have
+				elseif C_Container.SplitContainerItem and C_Container.PickupContainerItem then
+					local destBag, destSlot, room = findBagDest(itemID, maxStack)
+					if not destBag then
+						ns.Shopping.Say(Color("warning",
+							format("Not enough bag space to take %s from your bank.", ns.Format.Item(itemID, remaining))))
+						return
+					end
+					local take = math.min(remaining, room)
+					C_Container.SplitContainerItem(bag, slot, take)
+					C_Container.PickupContainerItem(destBag, destSlot)
+					if CursorHasItem and CursorHasItem() and ClearCursor then ClearCursor() end
+					remaining = remaining - take
+				end
+				if remaining <= 0 then return end
+			end
+		end
+	end
+end
+
 local function buyFromMerchant(itemID, qty)
 	if not (atMerchant and BuyMerchantItem) then return end
 	local entry = merchantItems[itemID]
@@ -223,7 +328,15 @@ local function rowTooltip(row)
 	GameTooltip:AddLine(" ")
 	if data.buyQty == 0 then
 		GameTooltip:AddLine(BANK_ICON .. " " .. Color("simulated", format("In your bank (%d)", data.bankQty)))
-		GameTooltip:AddLine("Take it from your bank to craft.", 1, 1, 1, true)
+		if data.atThisBank then
+			GameTooltip:AddLine(Color("simulated", format("Click: take %d from your bank", data.bankQty)))
+		else
+			GameTooltip:AddLine("Take it from your bank to craft.", 1, 1, 1, true)
+		end
+	elseif data.atThisBank then
+		GameTooltip:AddLine(BANK_ICON .. " " .. Color("simulated", format("%d in your bank, %d more %s",
+			data.bankQty, data.buyQty, data.vendor and "at a vendor" or "on the auction house")))
+		GameTooltip:AddLine(Color("simulated", format("Click: take %d from your bank", data.bankQty)))
 	elseif data.vendor then
 		if data.atThisVendor then
 			GameTooltip:AddLine(VENDOR_ICON .. " " .. Color("good", "Sold by this vendor"))
@@ -259,6 +372,8 @@ local function rowClick(row, mouseButton)
 		-- Shift-click links it in chat, as on any item.
 		local _, link = C_Item.GetItemInfo(data.itemID)
 		if link then HandleModifiedItemClick(link) end
+	elseif data.atThisBank then
+		withdrawFromBank(data.itemID, data.bankQty)
 	elseif data.buyQty == 0 then
 		return
 	elseif data.vendor then
@@ -289,6 +404,14 @@ local function createRow(row)
 	row.vendorBar:SetPoint("BOTTOMLEFT", 2, 2)
 	row.vendorBar:SetWidth(3)
 	row.vendorBar:SetColorTexture(0.25, 0.85, 0.35, 0.85)
+	row.bankBg = row:CreateTexture(nil, "BACKGROUND")
+	row.bankBg:SetAllPoints()
+	row.bankBg:SetColorTexture(0.15, 0.35, 0.55, 0.24)
+	row.bankBar = row:CreateTexture(nil, "ARTWORK")
+	row.bankBar:SetPoint("TOPLEFT", 2, -2)
+	row.bankBar:SetPoint("BOTTOMLEFT", 2, 2)
+	row.bankBar:SetWidth(3)
+	row.bankBar:SetColorTexture(0.40, 0.80, 1.0, 0.85)
 	row.highlight = row:CreateTexture(nil, "HIGHLIGHT")
 	row.highlight:SetAllPoints()
 	row.highlight:SetColorTexture(1, 0.85, 0.35, 0.10)
@@ -313,12 +436,15 @@ local function drawRow(row, data)
 	row.data = data
 	local header = data.header == true
 	local buyHere = not header and data.atThisVendor == true
+	local takeBank = not header and not buyHere and data.atThisBank == true
 	row.clear:SetShown(header)
 	row.headerBg:SetShown(header)
 	row.headerRule:SetShown(header)
 	row.vendorBg:SetShown(buyHere)
 	row.vendorBar:SetShown(buyHere)
-	row.stripe:SetShown(not header and not buyHere and data.stripe == true)
+	row.bankBg:SetShown(takeBank)
+	row.bankBar:SetShown(takeBank)
+	row.stripe:SetShown(not header and not buyHere and not takeBank and data.stripe == true)
 	row.highlight:SetShown(not header)
 	row.text:ClearAllPoints()
 	row.text:SetPoint("LEFT", header and 8 or 10, 0)
@@ -332,7 +458,13 @@ local function drawRow(row, data)
 		local left = ns.Format.Item(data.itemID, data.qty)
 		local tags = {}
 		if data.bankQty > 0 then
-			tags[#tags + 1] = data.buyQty > 0 and (BANK_ICON .. " " .. Color("muted", format("(%d in bank)", data.bankQty))) or BANK_ICON
+			if data.atThisBank then
+				tags[#tags + 1] = data.buyQty > 0
+					and (BANK_ICON .. " " .. Color("simulated", format("(%d in bank)", data.bankQty)))
+					or (BANK_ICON .. " " .. Color("simulated", "Take from bank"))
+			else
+				tags[#tags + 1] = data.buyQty > 0 and (BANK_ICON .. " " .. Color("muted", format("(%d in bank)", data.bankQty))) or BANK_ICON
+			end
 		end
 		if data.vendor then
 			if data.atThisVendor then
@@ -584,6 +716,7 @@ function ShoppingList.Refresh()
 			local buyQty = item.qty - bankQty
 			local vendor = buyQty > 0 and ns.Prices.BuysAtVendor(item.itemID) or false
 			local atThisVendor = (atMerchant and vendor and merchantItems[item.itemID] ~= nil) or false
+			local atThisBank = (atBank and bankQty > 0) or false
 			local cost = nil
 			itemCount = itemCount + 1
 			if bankQty > 0 then bankCount = bankCount + 1 end
@@ -596,7 +729,7 @@ function ShoppingList.Refresh()
 			rows[#rows + 1] = {
 				listName = list.name, itemID = item.itemID, qty = item.qty,
 				bankQty = bankQty, buyQty = buyQty, vendor = vendor, atThisVendor = atThisVendor,
-				cost = cost, stripe = index % 2 == 0,
+				atThisBank = atThisBank, cost = cost, stripe = index % 2 == 0,
 			}
 		end
 	end
@@ -795,6 +928,7 @@ local function create()
 		self:UnregisterEvent("GET_ITEM_INFO_RECEIVED")
 		openedByAuctionHouse = false
 		openedByMerchant = false
+		openedByBank = false
 		nameLooks = 0
 		scrollBox:SetDataProvider(CreateDataProvider({}))
 		GameTooltip:Hide()
@@ -872,6 +1006,8 @@ events:RegisterEvent("ITEM_KEY_ITEM_INFO_RECEIVED")
 events:RegisterEvent("MERCHANT_SHOW")
 events:RegisterEvent("MERCHANT_UPDATE")
 events:RegisterEvent("MERCHANT_CLOSED")
+events:RegisterEvent("BANKFRAME_OPENED")
+events:RegisterEvent("BANKFRAME_CLOSED")
 events:SetScript("OnEvent", function(_, event, itemID)
 	if event == "AUCTION_HOUSE_SHOW" then
 		atAuctionHouse = true
@@ -934,6 +1070,22 @@ events:SetScript("OnEvent", function(_, event, itemID)
 		wipe(merchantItems)
 		if frame and frame:IsShown() then
 			if openedByMerchant then frame:Hide() else ShoppingList.Refresh() end
+		end
+	elseif event == "BANKFRAME_OPENED" then
+		atBank = true
+		C_Timer.After(0, function()
+			if not atBank then return end
+			if frame and frame:IsShown() then
+				ShoppingList.Refresh()
+			elseif not atAuctionHouse and ns.Shopping.ListTarget() == "own" and hasBankItem() then
+				openedByBank = true
+				ShoppingList.Show("shop")
+			end
+		end)
+	elseif event == "BANKFRAME_CLOSED" then
+		atBank = false
+		if frame and frame:IsShown() then
+			if openedByBank then frame:Hide() else ShoppingList.Refresh() end
 		end
 	elseif pending and pending.itemID == itemID then
 		local waiting = pending

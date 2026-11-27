@@ -2,10 +2,14 @@
 ArchdudeWhatsNew:Register("Craftonomics", {
 	title = "Craftonomics",
 	icon = "Interface\\Icons\\INV_Hammer_20",
-	version = "5.24.0",
+	version = "5.24.1",
 	seen = "CraftonomicsWhatsNew",
 	saved = { "CraftonomicsDB", "CraftonomicsCharDB" },
 	changes = {
+		{ "5.24.1",
+			"|cffffd100Auto-open & take from bank (WoW Forever):|r opening the bank while a shopping list item is stored there now automatically opens Craftonomics' shopping list, highlights banked rows in light blue (|cffffd100Take from bank|r), and lets you left-click them to move the needed amount straight from your bank into your bags (and closes the list again when you leave if the bank opened it).",
+			"|cffffd100Single combined download:|r Retail and WoW Forever now share one combined release zip again (legacy |cffffd100CraftProfit|r settings migration still works if the old folder is installed).",
+		},
 		{ "5.24.0",
 			"|cffffd100Vendor & bank items on Craftonomics' shopping list:|r vendor-priced items and (on WoW Forever) materials sitting in your bank are now added to Craftonomics' shopping list with clear icons and tags (|cffffd100Vendor|r, |cffffd100In bank|r, or |cffffd100(N in bank)|r). Clicking a bank-only item or a vendor item (when |cffffd100Buy vendor items|r prices it at a vendor) won't search the auction house, and moving a banked item into your bags checks it off automatically on WoW Forever.",
 			"|cffffd100Auto-open & buy at vendors:|r talking to a vendor that sells a vendor item on your shopping list automatically opens the list, highlights the items that vendor sells in green (|cffffd100Buy here|r), and lets you left-click them to buy the needed amount directly (and closes the list again when you leave if the vendor opened it).",
@@ -38,12 +42,6 @@ ArchdudeWhatsNew:Register("Craftonomics", {
 		},
 		{ "5.20.0",
 			"|cffffd100Recipe list Profit / Cost / Skill-up toggle:|r switch what shows on the right of each row in Blizzard's profession recipe list using the new |cffffd100List: Profit|r button at the top left of the profession window (or |cffffd100Recipe list shows|r in Options). Left-click cycles between |cffffd100Profit|r and |cffffd100Crafting cost|r on Retail — and |cffffd100Profit|r, |cffffd100Crafting cost|r, |cffffd100Net skill-up cost|r, and |cffffd100Raw skill-up cost|r on WoW Forever (right-click to pick directly). Helpful while leveling a profession, including enchants and recipes with no auction price.",
-		},
-		{ "5.19.0",
-			"|cffffd100Vendor price floor for sale proceeds:|r when an item's vendor sell value pays more than its net auction house proceeds (after enabled fees), Craftonomics now uses the vendor sell price with no auction house fees instead. Items with no auction house price continue to show as unpriced rather than falling back to vendor price. On by default; toggle with |cffffd100Use vendor price as minimum sale price|r on the Prices options page.",
-			"|cffffd100Subtract expected AH deposit as a fee (optional):|r turn on |cffffd100Subtract expected AH deposit|r on the Prices options page (off by default) to deduct expected lost auction house deposits across relistings right alongside the 5% auction house cut across the panel, break-even price, Best crafts, All recipes, Recipe Profit tooltips, and Craft vs AH tooltips. Pick which duration to estimate with |cffffd100Expected deposit duration|r (|cffffd100Sell tab's duration|r, or |cffffd10012h|r / |cffffd10024h|r / |cffffd10048h|r on Retail and |cffffd1002h|r / |cffffd1008h|r / |cffffd10024h|r on WoW Forever).",
-			"|cffffd100Standalone Best crafts opening, Profession dropdown, and All recipes button:|r opening Best crafts from the minimap button, minimap menu, or |cffffd100/craftonomics best|r now opens the Best crafts window by itself without opening Blizzard's profession window — clicking a recipe row opens the profession window straight to that recipe. Switch between your character's professions with the new |cffffd100Profession|r dropdown, or jump straight to |cffffd100All recipes|r with the new button in the bottom bar.",
-			"|cffffd100All recipes Columns picker (up to 6 optional columns):|r click |cffffd100Columns|r next to Filters (or right-click any column header) to choose up to 6 optional columns alongside |cffffd100Item|r and |cffffd100Net Profit|r — including |cffffd100Sale Each|r, |cffffd100Return|r, |cffffd100Gold/day|r, |cffffd100Exp. Deposit|r, |cffffd100Trend|r, and |cffffd100Listed|r — with a live |cffffd100N/6|r counter that greys out unselected columns at |cffffd1006/6|r, plus |cffffd100Default columns|r to reset.",
 		},
 	},
 })

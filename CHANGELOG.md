@@ -1,5 +1,9 @@
 # Changelog
 
+## 5.24.1
+- **Auto-open & take from bank (WoW Forever):** opening the bank while a shopping list item is stored there now automatically opens Craftonomics' shopping list, highlights banked rows in light blue (`Take from bank`), and lets you left-click them to move the needed amount straight from your bank into your bags (and closes the list again when you leave if the bank opened it).
+- **Single combined download:** Retail and WoW Forever now share one combined release zip again (legacy `CraftProfit` settings migration still works if the old folder is installed).
+
 ## 5.24.0
 - **Vendor & bank items on Craftonomics' shopping list:** vendor-priced items and (on WoW Forever) materials sitting in your bank are now added to Craftonomics' shopping list with clear icons and tags (`Vendor`, `In bank`, or `(N in bank)`). Clicking a bank-only item or a vendor item (when **Buy vendor items** prices it at a vendor) won't search the auction house, and moving a banked item into your bags checks it off automatically on WoW Forever.
 - **Auto-open & buy at vendors:** talking to a vendor that sells a vendor item on your shopping list automatically opens the list, highlights the items that vendor sells in green (`Buy here`), and lets you left-click them to buy the needed amount directly (and closes the list again when you leave if the vendor opened it).
