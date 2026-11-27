@@ -2,10 +2,13 @@
 ArchdudeWhatsNew:Register("Craftonomics", {
 	title = "Craftonomics",
 	icon = "Interface\\Icons\\INV_Hammer_20",
-	version = "5.22.0",
+	version = "5.22.1",
 	seen = "CraftonomicsWhatsNew",
 	saved = { "CraftonomicsDB", "CraftonomicsCharDB" },
 	changes = {
+		{ "5.22.1",
+			"|cffffd100Two-way craft amount sync:|r changing the craft amount (via the |cffffd100<|r / |cffffd100>|r arrows, mouse wheel, or typing) or clicking |cffffd100Create All|r in Blizzard's profession window now updates Craftonomics' |cffffd100Crafts|r box and panel totals to match.",
+		},
 		{ "5.22.0",
 			"|cffffd100Buy vendor items dropdown & Vendor/AH icons:|r replaced the auction house checkbox with a |cffffd100Buy vendor items|r dropdown (|cffffd100Buy from Vendor|r, |cffffd100Buy from AH|r, or |cffffd100Cheapest|r) in |cffffd100Options|r and on the crafting/order panel. Vendor-purchasable materials now show a Vendor or Auction House icon next to their name on the panel and in their tooltip so you can see at a glance where each one is priced and bought.",
 			"|cffffd100Price addon is now the master priority setting & live Auctionator refresh:|r |cffffd100Price addon = Automatic|r now always uses |cffffd100TSM → Auctionator → Craftonomics' scan|r (regardless of |cffffd100Auction house → Price with|r). Material tooltips now show which price source priced each item, and Craftonomics refreshes automatically (and updates |cffffd100Freshest prices|r) as Auctionator scans or looks up items.",
@@ -47,11 +50,6 @@ ArchdudeWhatsNew:Register("Craftonomics", {
 			"Fixed: in the |cffffd100Ledger|r, items you posted on the auction house now sync directly when you visit the auction house and when you confirm a post, keeping the |cffffd100Posted|r column, |cffffd100On the auction house|r total, and |cffffd100Check what I have|r accurate.",
 			"Fixed: on the |cffffd100Patron|r tab, |cffffd100Next order|r no longer stays stuck busy after claiming an order, and the Patron order list recovers cleanly if the game's orders tab stalls while loading.",
 			"Fixed: recipes you learn while the profession window is closed now show their profit on the recipe list without reloading, and Bind-on-Equip raid and world gear drops now reliably show their auction house price and accurate |cffffd100Vendor Sell|r value on tooltips.",
-		},
-		{ "5.15.1",
-			"Fixed: mass disenchanting your own crafts runs much faster without freezing on large ledgers.",
-			"Fixed: taking back a Ledger write-off only restores that item's rank instead of undoing other ranks as well, and Enchanting Vellums reliably use their vendor price.",
-			"Fixed: forgetting a character removes its saved proc data too, Best Crafts' concentration |cffffd100Per point|r value accounts for your expected procs, and background layout work is skipped while the crafting window is closed.",
 		},
 	},
 })

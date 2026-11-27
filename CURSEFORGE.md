@@ -69,18 +69,21 @@ This addon was made with AI.
 ## B. Upload File form
 
 **Files:** two, each uploaded with only its own game versions (why is in [UPLOADING.md](../UPLOADING.md)). The display name, release type and changelog are the same for both.
-- `dist\Craftonomics-5.22.0-retail.zip`: Retail `12.1.5`
-- `dist\Craftonomics-5.22.0-forever.zip`: WoW Forever `1.60.1`
+- `dist\Craftonomics-5.22.1-retail.zip`: Retail `12.1.5`
+- `dist\Craftonomics-5.22.1-forever.zip`: WoW Forever `1.60.1`
 
 **Display name**
 ```
-Craftonomics 5.22.0
+Craftonomics 5.22.1
 ```
 
 **Release type:** `Release`
 
 **Changelog** (paste only the newest part; paste older parts too if they never went up)
 ```markdown
+5.22.1
+- **Two-way craft amount sync:** changing the craft amount (via the `<` / `>` arrows, mouse wheel, or typing) or clicking **Create All** in Blizzard's profession window now updates Craftonomics' **Crafts** box and panel totals to match.
+
 5.22.0
 - **Buy vendor items dropdown & Vendor/AH icons:** replaced the auction house checkbox with a **Buy vendor items** dropdown (**Buy from Vendor**, **Buy from AH**, or **Cheapest**) in **Options** and on the crafting/order panel. Vendor-purchasable materials now show a Vendor or Auction House icon next to their name on the panel and in their tooltip so you can see at a glance where each one is priced and bought.
 - **Price addon is now the master priority setting & live Auctionator refresh:** **Price addon = Automatic** now always uses **TSM → Auctionator → Craftonomics' scan** (regardless of **Auction house → Price with**). Material tooltips now show which price source priced each item, and Craftonomics refreshes automatically (and updates **Freshest prices**) as Auctionator scans or looks up items.

@@ -408,7 +408,7 @@ local function updateCraftsButtons()
 	if craftsInc then craftsInc:SetEnabled(crafts < ns.Shopping.MAX_CRAFTS) end
 end
 
-setCrafts = function(value)
+setCrafts = function(value, fromBlizzard)
 	value = math.max(1, math.min(math.floor(value or 1), ns.Shopping.MAX_CRAFTS))
 	if value == crafts then
 		if craftsBox and not craftsBox:HasFocus() then craftsBox:SetText(tostring(crafts)) end
@@ -418,8 +418,8 @@ setCrafts = function(value)
 	crafts = value
 	if craftsBox and not craftsBox:HasFocus() then craftsBox:SetText(tostring(crafts)) end
 	updateCraftsButtons()
-	-- The amount box next to Create follows it.
-	ns.Blizzard.SetCraftAmount(crafts, craftsKey)
+	-- The amount box next to Create follows it, unless it was what changed.
+	if not fromBlizzard then ns.Blizzard.SetCraftAmount(crafts, craftsKey) end
 	Panel.Refresh()
 end
 
@@ -2167,7 +2167,7 @@ function Panel.Init()
 	if frame or not ns.Blizzard.IsLoaded() then return end
 	createFrame()
 	ns.Blizzard.Watch(Panel.Refresh, frame)
-	ns.Blizzard.WatchCraftAmount()
+	ns.Blizzard.WatchCraftAmount(function(amount) setCrafts(amount, true) end)
 	ns.Blizzard.WatchCreate(updateCraftButton)
 	ns.Results.Init()
 end

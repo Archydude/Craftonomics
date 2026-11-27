@@ -642,6 +642,7 @@ end
 
 -- How many crafts the box should hold, and the recipe that's for.
 local craftAmount, craftAmountRecipe = 1, nil
+local fillingAmount = false
 
 -- Puts the amount in the box, when it's there to fill: the recipe can be made
 -- more than once and you can make it now. The box keeps it to what you can make.
@@ -653,7 +654,9 @@ local function fillCraftAmount()
 	local recipeInfo = page.SchematicForm:GetRecipeInfo()
 	if not (recipeInfo and recipeInfo.recipeID == craftAmountRecipe) then return end
 	if C_TradeSkillUI.GetRemainingRecasts() > 0 then return end
+	fillingAmount = true
 	box:SetValue(craftAmount)
+	fillingAmount = false
 end
 
 -- Sets how many crafts of `recipeID` the amount box next to Create holds.
@@ -662,17 +665,66 @@ function Blizzard.SetCraftAmount(amount, recipeID)
 	fillCraftAmount()
 end
 
--- Keeps the amount box at what Blizzard.SetCraftAmount set: the game puts it
--- back to 1 whenever the form or your bags change.
-function Blizzard.WatchCraftAmount()
+-- Keeps the amount box at what Blizzard.SetCraftAmount set (when the game resets
+-- it to 1), and notifies `onChange(amount)` when the player changes the box or
+-- clicks Create All so the Craftonomics panel follows it.
+function Blizzard.WatchCraftAmount(onChange)
 	local page = ProfessionsFrame.CraftingPage
-	if not page.SetupMultipleInputBox then return end
-	hooksecurefunc(page, "SetupMultipleInputBox", function(_, count)
-		-- Not during a craft: the last of several shows 1, as the game has it.
-		if craftAmount > 1 and count == 1 and not (UnitCastingInfo and UnitCastingInfo("player")) then
-			fillCraftAmount()
+	local function notifyAmount(amount)
+		if type(amount) ~= "number" or amount < 1 or amount >= math.huge then return end
+		amount = math.floor(amount)
+		local info = page.SchematicForm and page.SchematicForm.GetRecipeInfo and page.SchematicForm:GetRecipeInfo()
+		if info and info.recipeID then craftAmountRecipe = info.recipeID end
+		craftAmount = amount
+		if onChange then onChange(amount) end
+	end
+	if page.SetupMultipleInputBox then
+		hooksecurefunc(page, "SetupMultipleInputBox", function(_, count)
+			-- Not during a craft: the last of several shows 1, as the game has it.
+			if craftAmount > 1 and count == 1 and not (UnitCastingInfo and UnitCastingInfo("player")) then
+				fillCraftAmount()
+			end
+		end)
+	end
+	local box = page.CreateMultipleInputBox
+	if box then
+		local function readBox()
+			if fillingAmount then return end
+			local v = (box.GetValue and box:GetValue())
+				or (box.InputBox and box.InputBox.GetText and tonumber(box.InputBox:GetText()))
+				or (box.GetText and tonumber(box:GetText()))
+			if v and v >= 1 then notifyAmount(v) end
 		end
-	end)
+		if box.DecrementButton and box.DecrementButton.HookScript then
+			box.DecrementButton:HookScript("OnClick", readBox)
+		end
+		if box.IncrementButton and box.IncrementButton.HookScript then
+			box.IncrementButton:HookScript("OnClick", readBox)
+		end
+		if box.HookScript then
+			box:HookScript("OnMouseWheel", readBox)
+		end
+		local editBox = box.InputBox or box
+		if editBox.HookScript then
+			editBox:HookScript("OnTextChanged", function(_, userInput)
+				if userInput then readBox() end
+			end)
+		end
+	end
+	if page.GetCraftableCount then
+		local function onCreateAll()
+			local ok, count = pcall(page.GetCraftableCount, page)
+			if ok and type(count) == "number" and count >= 1 and count < math.huge then
+				notifyAmount(count)
+			end
+		end
+		-- CreateAllButton holds the original page.CreateAll closure from OnLoad, so
+		-- hook both the button click and the method.
+		if page.CreateAllButton and page.CreateAllButton.HookScript then
+			page.CreateAllButton:HookScript("OnClick", onCreateAll)
+		end
+		if page.CreateAll then hooksecurefunc(page, "CreateAll", onCreateAll) end
+	end
 end
 
 -- Whether the crafting page has the game's Create button: your own recipe, one
