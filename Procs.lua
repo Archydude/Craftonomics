@@ -44,10 +44,19 @@ end
 -- This character's counts for a profession, made when first needed.
 local function sizesFor(professionID)
 	if not mine then
-		local name, realm = UnitFullName("player")
-		realm = realm or GetNormalizedRealmName()
-		if not (name and realm) then return end
-		local key = name .. "-" .. realm
+		local key
+		if ns.Ranks and ns.Ranks.Me then
+			local _, k = ns.Ranks.Me()
+			key = k
+		end
+		if not key then
+			local name, realm = UnitFullName("player")
+			if not name or name == "" then name = UnitName("player") end
+			if not realm or realm == "" then realm = GetNormalizedRealmName and GetNormalizedRealmName() or nil end
+			if not realm or realm == "" then realm = GetRealmName and GetRealmName() or nil end
+			if name and name ~= "" and realm and realm ~= "" then key = name .. "-" .. realm end
+		end
+		if not key then return end
 		CraftonomicsDB.procSizes[key] = CraftonomicsDB.procSizes[key] or {}
 		mine = CraftonomicsDB.procSizes[key]
 	end

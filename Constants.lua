@@ -96,7 +96,7 @@ ns.DEFAULTS = {
 	provider = "auto",
 	matSource = "dbmarket",
 	saleSource = "dbmarket",
-	vendorOnAH = false,   -- materials vendors sell are bought on the auction house, not at a vendor
+	vendorBuy = "vendor", -- how vendor-sold materials are priced and bought: "vendor" | "ah" | "cheapest" (see VENDOR_BUY_CHOICES)
 	saveTSMPrices = false, -- characters with TSM save its prices for the ones without it (see SavedPrices.lua)
 	saveItems = "recipes", -- which items' prices they save (see ns.SAVE_ITEMS_CHOICES)
 	ahCut = true,
@@ -398,6 +398,16 @@ ns.LIST_ADDON_CHOICES = {
 -- The shopping list the missing materials button adds to, when the list isn't
 -- named after the character or profession.
 ns.SHOPPING_LIST = "Crafting"
+
+-- Where to price and buy materials a vendor sells: key, label, and tooltip.
+ns.VENDOR_BUY_CHOICES = {
+	{ "vendor", "Buy from Vendor", "Materials a vendor sells (thread, flux, vials...) are priced at the vendor, " ..
+		"and the shopping list says in chat to buy them there." },
+	{ "ah", "Buy from AH", "Materials a vendor sells are priced at their auction house price and go on the " ..
+		"shopping list (falling back to the vendor when none are listed). Warns when a vendor is cheaper." },
+	{ "cheapest", "Cheapest", "Uses whichever is cheaper for each vendor material: buys on the auction house when " ..
+		"it's cheaper than the vendor, otherwise buys from the vendor." },
+}
 
 -- Which items' TSM prices are saved for your alts: key, name, and what it saves.
 ns.SAVE_ITEMS_CHOICES = {

@@ -842,7 +842,7 @@ local function craftCacheKey()
 	return table.concat({
 		tostring(db.craftStrategy),
 		tostring(db.chainCooldowns == true),
-		tostring(db.vendorOnAH),
+		tostring(db.vendorBuy or db.vendorOnAH),
 		tostring(db.provider),
 		tostring(db.matSource),
 		tostring(db.ahPrice),

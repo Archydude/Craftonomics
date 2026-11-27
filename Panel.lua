@@ -557,16 +557,11 @@ local function addAutoRow()
 	end)
 end
 
--- Whether materials a vendor sells are bought on the auction house (the "Buy
--- vendor items on the auction house" option), under the crafting strategy.
+-- Where materials a vendor sells are bought and priced (the "Buy vendor items"
+-- option), under the crafting strategy.
 local function addVendorRow()
-	addCheckRow("vendorOnAH", "Buy vendor items on the auction house", function(tip)
-		tip:SetText("Buy vendor items on the auction house")
-		tip:AddLine("Materials a vendor sells (thread, flux, vials...) are priced at their auction house price and go "
-			.. "on the shopping list.", 1, 1, 1, true)
-		tip:AddLine("Off: they're priced at the vendor, and the shopping list says in chat to buy them there. Also in "
-			.. "the options.", 0.53, 0.53, 0.53, true)
-	end)
+	addChoiceRow("vendorBuy", "Buy vendor items", "vendorBuy", "Buy vendor items", ns.VENDOR_BUY_CHOICES,
+		"Also in the options.", "Where to price and buy materials a vendor sells (thread, flux, vials...).")
 end
 
 -- Whether cooldown-locked recipes (transmutes, Mooncloth) are used when crafting
@@ -892,6 +887,13 @@ end
 -- A material in your bank, where crafting doesn't take it from there: the mark
 -- after its count, and under the materials.
 local BANK_ICON = "|TInterface\\Minimap\\Tracking\\Banker:14|t"
+local VENDOR_ICON = "|TInterface\\GossipFrame\\VendorGossipIcon:14|t"
+local AH_ICON = "|TInterface\\Minimap\\Tracking\\Auctioneer:14|t"
+
+local function sourceIcon(from)
+	if from == "vendor" then return VENDOR_ICON end
+	if from == "tsm" or from == "saved" or from == "auctionator" or from == "own" then return AH_ICON end
+end
 
 -- How many of a material crafting can take right now, and how many more are in
 -- your bank where it can't take them from there (0 where it can).
@@ -908,11 +910,25 @@ local function materialTooltip(model, material, canCycle)
 			tip:AddLine(" ")
 			tip:AddLine(craftedIcon() .. " You craft this yourself: priced at what crafting it costs.", 1, 1, 1, true)
 		end
-		local age = material.price and ns.Prices.MaterialAge(material.itemID)
-		if age ~= nil then
-			local stale = age == false or age >= STALE_DAYS
-			tip:AddLine(" ")
-			tip:AddLine(Color(stale and "warning" or "muted", "Auctionator price seen " .. ns.Prices.AgeText(age)))
+		if material.price and not isCrafted(material) then
+			local from
+			if ns.Prices.MaterialFrom then
+				local _, source = ns.Prices.MaterialFrom(material.itemID)
+				from = source
+			end
+			local sourceLabel = ns.Prices.SourceName and ns.Prices.SourceName(from, true)
+			local icon = ns.Prices.Vendor(material.itemID) and sourceIcon(from) or nil
+			local prefix = icon and (icon .. " ") or ""
+			local age = ns.Prices.MaterialAge(material.itemID)
+			if age ~= nil then
+				local stale = age == false or age >= STALE_DAYS
+				tip:AddLine(" ")
+				tip:AddLine(prefix .. Color(stale and "warning" or "muted",
+					(sourceLabel or "Auctionator") .. " price seen " .. ns.Prices.AgeText(age)))
+			elseif sourceLabel then
+				tip:AddLine(" ")
+				tip:AddLine(prefix .. Color("muted", "Price from " .. sourceLabel))
+			end
 		end
 		local missing = missingOf(model, material)
 		if material.estimated then
@@ -1051,9 +1067,20 @@ local function drawMaterials(model)
 		local tag = (material.simulated and ("  " .. Color("simulated", "simulated")))
 			or (not cart and missingOf(model, material) > 0 and ("  " .. Color("missing", "missing")))
 			or ""
-		-- Craft myself: priced at what crafting it costs.
+		-- Craft myself: priced at what crafting it costs. For vendor-purchasable
+		-- materials, show whether they're bought from a vendor or on the AH.
 		local crafted = isCrafted(material)
-		if crafted then tag = tag .. "  " .. craftedIcon() end
+		if crafted then
+			tag = tag .. "  " .. craftedIcon()
+		elseif ns.Prices.Vendor(material.itemID) then
+			local from
+			if material.price and ns.Prices.MaterialFrom then
+				local _, source = ns.Prices.MaterialFrom(material.itemID)
+				from = source
+			end
+			local icon = sourceIcon(from) or (ns.Prices.BuysAtVendor(material.itemID) and VENDOR_ICON or nil)
+			if icon then tag = tag .. "  " .. icon end
+		end
 		-- Click cycles qualities, or opens the recipe of a material you craft
 		-- yourself; Shift-click shops for just this material.
 		local onClick, tooltip

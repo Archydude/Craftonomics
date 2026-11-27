@@ -38,18 +38,23 @@ function Ranks.Init()
 	characters = CraftonomicsDB.characters
 end
 
--- This character's saved entry and its key, or nil before login.
-function Ranks.Me()
-	if myKey then return characters[myKey], myKey end
+-- This character's name, second name / realm, and "Name-Realm" key, or nil
+-- when the game hasn't populated them yet.
+local function playerIdentity()
+	local name, realm = UnitFullName("player")
+	if not name or name == "" then name = UnitName("player") end
+	if not realm or realm == "" then realm = GetNormalizedRealmName and GetNormalizedRealmName() or nil end
+	if not realm or realm == "" then realm = GetRealmName and GetRealmName() or nil end
+	if not (name and name ~= "" and realm and realm ~= "") then return end
+	return name, realm, name .. "-" .. realm
 end
 
 -- This character's entry, made on login. Ranks saved per character by 1.7 and
 -- 1.8 move into it.
 local function login()
-	local name, realm = UnitFullName("player")
-	realm = realm or GetNormalizedRealmName()
-	if not (name and realm) then return end
-	myKey = name .. "-" .. realm
+	local name, realm, key = playerIdentity()
+	if not key then return end
+	myKey = key
 	local me = characters[myKey] or { professions = {} }
 	me.name, me.realm, me.class = name, realm, UnitClassBase("player")
 	characters[myKey] = me
@@ -60,6 +65,13 @@ local function login()
 		CraftonomicsCharDB.professions = nil
 	end
 	saved = me.professions
+end
+
+-- This character's saved entry and its key, retrying login() if PLAYER_LOGIN
+-- fired before the realm / surname was ready (or was called before it ran).
+function Ranks.Me()
+	if not myKey and characters then login() end
+	if myKey then return characters[myKey], myKey end
 end
 
 ---------------------------------------------------------------------------
@@ -367,12 +379,18 @@ local function rankText(rank, recipeID, best, cost)
 	return text, r, g, b
 end
 
--- A character's name in its class color, with the realm when it's not this one
--- (or always, with withRealm).
+-- A character's name in its class color. On WoW Forever, the second part is
+-- the character's surname rather than a realm, so join with a space. On Retail,
+-- append the realm when it isn't this one (or always, with withRealm).
 local function characterName(character, withRealm)
 	local name = character.name or "?"
-	if character.realm and (withRealm or (myKey and character.realm ~= characters[myKey].realm)) then
-		name = name .. "-" .. character.realm
+	local realm = character.realm
+	if realm and realm ~= "" then
+		if not ns.QUALITY_CRAFTING then
+			name = name .. " " .. realm
+		elseif withRealm or (myKey and characters[myKey] and realm ~= characters[myKey].realm) then
+			name = name .. "-" .. realm
+		end
 	end
 	local color = character.class and C_ClassColor.GetClassColor(character.class)
 	return color and color:WrapTextInColorCode(name) or name

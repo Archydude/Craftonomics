@@ -69,18 +69,23 @@ This addon was made with AI.
 ## B. Upload File form
 
 **Files:** two, each uploaded with only its own game versions (why is in [UPLOADING.md](../UPLOADING.md)). The display name, release type and changelog are the same for both.
-- `dist\Craftonomics-5.21.0-retail.zip`: Retail `12.1.5`
-- `dist\Craftonomics-5.21.0-forever.zip`: WoW Forever `1.60.1`
+- `dist\Craftonomics-5.22.0-retail.zip`: Retail `12.1.5`
+- `dist\Craftonomics-5.22.0-forever.zip`: WoW Forever `1.60.1`
 
 **Display name**
 ```
-Craftonomics 5.21.0
+Craftonomics 5.22.0
 ```
 
 **Release type:** `Release`
 
 **Changelog** (paste only the newest part; paste older parts too if they never went up)
 ```markdown
+5.22.0
+- **Buy vendor items dropdown & Vendor/AH icons:** replaced the auction house checkbox with a **Buy vendor items** dropdown (**Buy from Vendor**, **Buy from AH**, or **Cheapest**) in **Options** and on the crafting/order panel. Vendor-purchasable materials now show a Vendor or Auction House icon next to their name on the panel and in their tooltip so you can see at a glance where each one is priced and bought.
+- **Price addon is now the master priority setting & live Auctionator refresh:** **Price addon = Automatic** now always uses **TSM → Auctionator → Craftonomics' scan** (regardless of **Auction house → Price with**). Material tooltips now show which price source priced each item, and Craftonomics refreshes automatically (and updates **Freshest prices**) as Auctionator scans or looks up items.
+- **Fixed WoW Forever character names in Ledger & Best crafts:** fixed a bug where new Ledger entries fell back to `"Name-"` on WoW Forever, retried character identification if the surname wasn't ready at login, and formatted WoW Forever's two-part names with a space (e.g. `Arch Fighter`) instead of a hyphen.
+
 5.21.0
 - **Use cooldown crafts for materials (WoW Forever):** added a **Use cooldown crafts for materials** checkbox (off by default) in **Options** and on the crafting panel right under **Buy vendor items on the auction house** when **Craft myself** or **Cheapest way** is active. Both strategies skip cooldown-locked recipes (such as Alchemy transmutes and Mooncloth) while this is off, and turning it on lets either strategy craft and price those materials while still preferring non-cooldown recipes (like *Smelt Gold* over *Transmute: Iron to Gold*) when your character knows both.
 

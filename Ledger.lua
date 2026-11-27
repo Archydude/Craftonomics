@@ -707,8 +707,16 @@ end
 ---------------------------------------------------------------------------
 
 local function me()
-	local _, key = ns.Ranks and ns.Ranks.Me and ns.Ranks.Me()
-	return key or format("%s-%s", UnitName("player") or "?", GetNormalizedRealmName() or "?")
+	if ns.Ranks and ns.Ranks.Me then
+		local _, key = ns.Ranks.Me()
+		if key then return key end
+	end
+	local name, realm = UnitFullName("player")
+	if not name or name == "" then name = UnitName("player") end
+	if not realm or realm == "" then realm = GetNormalizedRealmName and GetNormalizedRealmName() or nil end
+	if not realm or realm == "" then realm = GetRealmName and GetRealmName() or nil end
+	if name and name ~= "" and realm and realm ~= "" then return name .. "-" .. realm end
+	return (name and name ~= "" and name) or "?"
 end
 
 -- The rank in an item's link, or `fallback`: crafted items carry it in the link,

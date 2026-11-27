@@ -28,9 +28,14 @@ local function loadSettings()
 	local known = false
 	for _, strategy in ipairs(ns.STRATEGIES) do known = known or strategy[1] == db.craftStrategy end
 	if db.craftStrategy and not known then db.craftStrategy = nil end
-	-- Up to 3.1 "Use vendor prices" (on by default) was the other way around.
+	-- Up to 3.1 "Use vendor prices" (on by default) was the other way around;
+	-- up to 5.21.0 "Buy vendor items on the auction house" was a boolean (`vendorOnAH`).
 	if db.useVendor == false then db.vendorOnAH = true end
 	db.useVendor = nil
+	if db.vendorBuy == nil and db.vendorOnAH ~= nil then
+		db.vendorBuy = db.vendorOnAH and "ah" or "vendor"
+	end
+	db.vendorOnAH = nil
 	-- The Ledger's "All time" was gone before it was ever released.
 	if db.ledgerRange == 0 then db.ledgerRange = 90 end
 	-- Up to 4.1 only where missing materials go was a choice. With Craftonomics

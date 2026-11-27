@@ -318,10 +318,15 @@ local function onItem(tooltip, data)
 	local values, from = lookup(tostring(itemID))
 	if values and not (key and key:find("@", 1, true)) then
 		source = from
-		if not ns.db.vendorOnAH and values[2] then
+		local mode = ns.db.vendorBuy or (ns.db.vendorOnAH and "ah" or "vendor")
+		local useVendor = values[2] and (mode == "vendor"
+			or (mode == "cheapest" and (not values[1] or values[2] <= values[1])))
+		if useVendor then
 			price, priceType = values[2], "vendorbuy"
 		elseif values[1] then
 			price, priceType = values[1], from.saved.matSource or "dbmarket"
+		elseif values[2] then
+			price, priceType = values[2], "vendorbuy"
 		end
 	end
 	if not price and key then

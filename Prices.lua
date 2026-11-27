@@ -72,6 +72,49 @@ end
 local FRESH_NAMES = { tsm = "TSM", own = "Craftonomics' scan", auctionator = "Auctionator's scan" }
 -- The sources newest first, and when that was worked out (see freshest).
 local freshList, freshAt
+local historyCache, historyCacheStamp
+-- Item dbKey -> time() when Auctionator last recorded a live scan/search price.
+local auctionatorSeenAt = {}
+local auctionatorHooked, auctionatorRefreshDue = false, false
+
+-- Clears cached history/freshness and redraws open windows after Auctionator writes new prices.
+local function refreshFromAuctionator()
+	auctionatorRefreshDue = false
+	freshAt = nil
+	historyCache, historyCacheStamp = nil, nil
+	if not ns.db then return end
+	if ns.Planner and ns.Planner.Reset then ns.Planner.Reset() end
+	if ns.Panel and ns.Panel.Refresh then ns.Panel.Refresh() end
+	if ns.BestCrafts and ns.BestCrafts.Reprice then ns.BestCrafts.Reprice(true) end
+	if ns.BestCraftsList and ns.BestCraftsList.Refresh then ns.BestCraftsList.Refresh() end
+	if ns.RecipeProfit and ns.RecipeProfit.Refresh then ns.RecipeProfit.Refresh() end
+	if ns.ShoppingList and ns.ShoppingList.Refresh then ns.ShoppingList.Refresh() end
+end
+
+-- Watches Auctionator's database writes so single-item scans update "Freshest prices"
+-- and trigger a debounced UI refresh. Safe to call repeatedly.
+function Prices.HookAuctionator()
+	if auctionatorHooked then return end
+	local db = Auctionator and Auctionator.Database
+	if not (hooksecurefunc and db and db.SetPrice) then return end
+	auctionatorHooked = true
+	hooksecurefunc(db, "SetPrice", function(_, dbKey)
+		if dbKey ~= nil then auctionatorSeenAt[tostring(dbKey)] = time() end
+		freshAt = nil
+		historyCache, historyCacheStamp = nil, nil
+		if not auctionatorRefreshDue and C_Timer and C_Timer.After then
+			auctionatorRefreshDue = true
+			C_Timer.After(0.5, refreshFromAuctionator)
+		end
+	end)
+end
+
+local hookEvents = CreateFrame("Frame")
+hookEvents:RegisterEvent("PLAYER_LOGIN")
+hookEvents:RegisterEvent("ADDON_LOADED")
+hookEvents:SetScript("OnEvent", function(_, event, arg1)
+	if event == "PLAYER_LOGIN" or arg1 == "Auctionator" then Prices.HookAuctionator() end
+end)
 
 -- With "Freshest prices" as the Price addon: who has prices, newest first:
 -- { { name = "tsm" | "own" | "auctionator", seconds = how old its prices are } ... }.
@@ -125,18 +168,50 @@ local function auctionatorSaw(ageOf, arg, source)
 	return age <= math.ceil(source.seconds / 86400)
 end
 
+local function auctionatorCheckedSeconds(itemID)
+	local at = itemID and auctionatorSeenAt[tostring(itemID)]
+	return at and math.max(time() - at, 0) or nil
+end
+
+local function fresherLiveLookup(itemID, ownChecked, ownFn, auctFn, limit)
+	local auctChecked = auctionatorCheckedSeconds(itemID)
+	if not (ownChecked and ownChecked <= limit) then ownChecked = nil end
+	if not (auctChecked and auctChecked <= limit) then auctChecked = nil end
+	if not (ownChecked or auctChecked) then return end
+	local preferOwn = ownChecked and (not auctChecked or ownChecked < auctChecked)
+	if preferOwn then
+		local v = ownFn()
+		if v then return v, "own" end
+		if auctChecked then
+			v = auctFn()
+			if v then return v, "auctionator" end
+		end
+	else
+		local v = auctFn()
+		if v then return v, "auctionator" end
+		if ownChecked then
+			v = ownFn()
+			if v then return v, "own" end
+		end
+	end
+end
+
 -- A material's price from the freshest source that has it, and which that is. A
 -- scan only counts for what it saw up for sale: an item nobody had up keeps an
 -- older price there. Nil when none has it that fresh.
 local function freshMaterial(itemID)
 	local list = freshFor(ns.db.matSource)
 	if not list then return end
-	-- Looked up by itself since the newest of them: nothing is fresher than that.
-	local checked = ns.PriceScan.MaterialChecked(itemID)
-	if checked and checked <= list[1].seconds then
-		local value = ns.PriceScan.Material(itemID)
-		if value then return value, "own" end
-	end
+	-- Single-item lookups since the newest scan: nothing is fresher than those.
+	local api = auctionatorAPI()
+	local live, liveFrom = fresherLiveLookup(
+		itemID,
+		ns.PriceScan.MaterialChecked(itemID),
+		function() return ns.PriceScan.Material(itemID) end,
+		function() return api and auctionatorValue(api.GetAuctionPriceByItemID, itemID) end,
+		list[1].seconds
+	)
+	if live then return live, liveFrom end
 	for _, source in ipairs(list) do
 		local value
 		if source.name == "tsm" then
@@ -144,8 +219,7 @@ local function freshMaterial(itemID)
 		elseif source.name == "own" then
 			value = ns.PriceScan.MaterialInLastScan(itemID) and ns.PriceScan.Material(itemID)
 		else
-			local api = Auctionator.API.v1
-			value = auctionatorSaw(api.GetAuctionAgeByItemID, itemID, source)
+			value = api and auctionatorSaw(api.GetAuctionAgeByItemID, itemID, source)
 				and auctionatorValue(api.GetAuctionPriceByItemID, itemID)
 		end
 		if value then return value, source.name end
@@ -158,11 +232,20 @@ local function freshSale(link, itemID, tsmSource)
 	tsmSource = tsmSource or ns.db.saleSource
 	local list = freshFor(tsmSource)
 	if not list then return end
-	local checked = ns.PriceScan.SaleChecked(link, itemID)
-	if checked and checked <= list[1].seconds then
-		local value = ns.PriceScan.Sale(link, itemID)
-		if value then return value, "own" end
-	end
+	local id = itemID or (type(link) == "string" and tonumber(link:match("item:(%d+)")))
+	local api = auctionatorAPI()
+	local live, liveFrom = fresherLiveLookup(
+		id,
+		ns.PriceScan.SaleChecked(link, itemID),
+		function() return ns.PriceScan.Sale(link, itemID) end,
+		function()
+			if not api then return end
+			return auctionatorValue(api.GetAuctionPriceByItemLink, link)
+				or (id and auctionatorValue(api.GetAuctionPriceByItemID, id))
+		end,
+		list[1].seconds
+	)
+	if live then return live, liveFrom end
 	for _, source in ipairs(list) do
 		local value
 		if source.name == "tsm" then
@@ -171,8 +254,7 @@ local function freshSale(link, itemID, tsmSource)
 		elseif source.name == "own" then
 			value = ns.PriceScan.SaleInLastScan(link, itemID) and ns.PriceScan.Sale(link, itemID)
 		else
-			local api = Auctionator.API.v1
-			value = auctionatorSaw(api.GetAuctionAgeByItemLink, link, source)
+			value = api and auctionatorSaw(api.GetAuctionAgeByItemLink, link, source)
 				and auctionatorValue(api.GetAuctionPriceByItemLink, link)
 		end
 		if value then return value, source.name end
@@ -193,55 +275,105 @@ function Prices.Vendor(itemID)
 		or (itemID == ns.VELLUM_ITEM and ns.VELLUM_PRICE or nil)
 end
 
--- What a material costs you, in copper (nil if nobody knows): what it costs to
--- buy, or what crafting it costs when the crafting strategy crafts it (WoW
--- Forever's Craft myself and Cheapest way, see Chains.lua).
-function Prices.Material(itemID)
-	return ns.Chains.Cost(itemID) or Prices.Buy(itemID)
-end
-
--- With both Auctionator's prices and Craftonomics' scan in use, whether the
--- scan's come first: the "Price with" choice. Either way the other one prices
--- what the first doesn't.
-local function ownFirst()
-	return ns.db.ahPrice == "own"
+-- What a material costs on the auction house, in copper, and where that price came
+-- from ("tsm" | "saved" | "auctionator" | "own"). Nil if nobody knows.
+local function auctionPriceFrom(itemID)
+	local api, own = auctionatorAPI(), ownScan()
+	-- Freshest prices: the newest source that has it. Failing that, as with Automatic.
+	local fresh, freshFrom = freshMaterial(itemID)
+	if fresh then return fresh, freshFrom end
+	if tsmAvailable() then
+		local value = tsmValue(ns.db.matSource, "i:" .. itemID)
+		if value then return value, "tsm" end
+	elseif savedPrices() then
+		local value = ns.SavedPrices.Material(itemID)
+		if value then return value, "saved" end
+	end
+	local value = api and auctionatorValue(api.GetAuctionPriceByItemID, itemID)
+	if value then return value, "auctionator" end
+	value = own and own.Material(itemID)
+	if value then return value, "own" end
 end
 
 -- What a material costs on the auction house, in copper (nil if nobody knows).
 local function auctionPrice(itemID)
-	local api, own = auctionatorAPI(), ownScan()
-	-- Freshest prices: the newest source that has it. Failing that, as with Automatic.
-	local fresh = freshMaterial(itemID)
-	if fresh then return fresh end
-	local value = (tsmAvailable() and tsmValue(ns.db.matSource, "i:" .. itemID))
-		or (savedPrices() and ns.SavedPrices.Material(itemID))
-	if value then return value end
-	if ownFirst() then
-		return (own and own.Material(itemID)) or (api and auctionatorValue(api.GetAuctionPriceByItemID, itemID)) or nil
-	end
-	return (api and auctionatorValue(api.GetAuctionPriceByItemID, itemID)) or (own and own.Material(itemID)) or nil
+	return (auctionPriceFrom(itemID))
 end
 
--- Whether materials a vendor sells are bought from a vendor: unless "Buy vendor
--- items on the auction house" is on.
+local function vendorMode()
+	local mode = ns.db and ns.db.vendorBuy
+	if mode == "vendor" or mode == "ah" or mode == "cheapest" then return mode end
+	return (ns.db and ns.db.vendorOnAH) and "ah" or "vendor"
+end
+
+-- What a material costs you, in copper, and where that price came from:
+-- "craft" | "vendor" | "tsm" | "saved" | "auctionator" | "own".
+function Prices.MaterialFrom(itemID)
+	local crafted = ns.Chains and ns.Chains.Cost and ns.Chains.Cost(itemID)
+	if crafted then return crafted, "craft" end
+	local vendor = Prices.Vendor(itemID)
+	local mode = vendorMode()
+	if vendor and mode == "vendor" then return vendor, "vendor" end
+	local auction, from = auctionPriceFrom(itemID)
+	if vendor and mode == "cheapest" then
+		if auction and auction < vendor then return auction, from end
+		return vendor, "vendor"
+	end
+	if auction then return auction, from end
+	if vendor then return vendor, "vendor" end
+end
+
+-- What a material costs you, in copper (nil if nobody knows): what it costs to
+-- buy, or what crafting it costs when the crafting strategy crafts it (WoW
+-- Forever's Craft myself and Cheapest way, see Chains.lua).
+function Prices.Material(itemID)
+	return (Prices.MaterialFrom(itemID))
+end
+
+-- Human-readable name for a price source key returned by SaleFrom / MaterialFrom.
+function Prices.SourceName(from, isMaterial)
+	if from == "vendor" then return "Vendor" end
+	if from == "tsm" then
+		local key = isMaterial and ns.db.matSource or ns.db.saleSource
+		return "TSM (" .. ns.TSMSourceText(key) .. ")"
+	end
+	if from == "saved" then return "Saved TSM" end
+	if from == "auctionator" then return "Auctionator" end
+	if from == "own" then return "Craftonomics' scan" end
+	if from == "craft" then return "Crafted" end
+end
+
+-- Whether materials a vendor sells are bought from a vendor.
 function Prices.BuysAtVendor(itemID)
-	return not ns.db.vendorOnAH and Prices.Vendor(itemID) ~= nil
+	local vendor = Prices.Vendor(itemID)
+	if not vendor then return false end
+	local mode = vendorMode()
+	if mode == "vendor" then return true end
+	if mode == "cheapest" then
+		local auction = auctionPrice(itemID)
+		return not (auction and auction < vendor)
+	end
+	return false
 end
 
 -- What buying a material costs, in copper (nil if nobody knows), whatever the
--- crafting strategy. Vendor-sold things (vials, thread...) cost the vendor price,
--- or with "Buy vendor items on the auction house", their auction price (the
--- vendor's while the auction house has none).
+-- crafting strategy.
 function Prices.Buy(itemID)
 	local vendor = Prices.Vendor(itemID)
-	if vendor and not ns.db.vendorOnAH then return vendor end
-	return auctionPrice(itemID) or vendor
+	local mode = vendorMode()
+	if vendor and mode == "vendor" then return vendor end
+	local auction = auctionPrice(itemID)
+	if vendor and mode == "cheapest" then
+		if auction and auction < vendor then return auction end
+		return vendor
+	end
+	return auction or vendor
 end
 
--- With "Buy vendor items on the auction house" on: when the auction house asks
--- more for a material than a vendor does, both prices. Nil otherwise.
+-- With "Buy from AH" on: when the auction house asks more for a material than a
+-- vendor does, both prices. Nil otherwise.
 function Prices.VendorCheaper(itemID)
-	if not ns.db.vendorOnAH then return end
+	if vendorMode() ~= "ah" then return end
 	local vendor = Prices.Vendor(itemID)
 	local auction = vendor and auctionPrice(itemID)
 	if auction and auction > vendor then return vendor, auction end
@@ -263,15 +395,12 @@ function Prices.SaleFrom(link, itemID)
 		if value then return value, "saved" end
 	end
 	local api, own = auctionatorAPI(), ownScan()
-	-- Craftonomics' scan before Auctionator's prices when that's the choice.
-	local value = own and ownFirst() and own.Sale(link, itemID)
-	if value then return value, "own" end
 	if api then
-		value = auctionatorValue(api.GetAuctionPriceByItemLink, link)
+		local value = auctionatorValue(api.GetAuctionPriceByItemLink, link)
 			or (itemID and auctionatorValue(api.GetAuctionPriceByItemID, itemID))
 		if value then return value, "auctionator" end
 	end
-	value = own and own.Sale(link, itemID)
+	local value = own and own.Sale(link, itemID)
 	if value then return value, "own" end
 end
 
@@ -525,10 +654,8 @@ end
 -- "own" (Craftonomics'), or nil with TSM's prices, which need none.
 function Prices.Scanner()
 	if tsmAvailable() or Prices.SavedAge() then return nil end
-	local api, own = auctionatorAPI(), ownScan()
-	-- With both, the one whose prices come first, once Craftonomics has scanned.
-	if api and not (own and ownFirst() and own.HasPrices()) then return "auctionator" end
-	if own then return "own" end
+	if auctionatorAPI() then return "auctionator" end
+	if ownScan() then return "own" end
 end
 
 -- Whether Craftonomics' scan may start by itself: its prices are in use, TSM's
@@ -629,8 +756,6 @@ local MARKET_DAYS = 14
 local HISTORICAL_DAYS = 60
 local OUTLIER_LOW, OUTLIER_HIGH = 0.25, 2.5
 
-local historyCache, historyCacheStamp
-
 local function trimmedAverage(points, weighted)
 	local n = #points
 	if n == 0 then return end
@@ -729,7 +854,7 @@ local function historyStats(link, itemID)
 		tostring(ns.db.ahPrice),
 		ns.PriceScan and ns.PriceScan.HistoryVersion() or 0,
 		tostring(auctionatorScanned() or 0))
-	if historyCacheStamp ~= stamp then
+	if historyCacheStamp ~= stamp or not historyCache then
 		historyCacheStamp = stamp
 		historyCache = {}
 	end
@@ -755,14 +880,8 @@ local function historyStats(link, itemID)
 		end
 	end
 
-	local market, historical, source
-	if ownFirst() then
-		market, historical, source = tryOwn()
-		if not market then market, historical, source = tryAuct() end
-	else
-		market, historical, source = tryAuct()
-		if not market then market, historical, source = tryOwn() end
-	end
+	local market, historical, source = tryAuct()
+	if not market then market, historical, source = tryOwn() end
 	historyCache[cacheKey] = {
 		market = market or false,
 		historical = historical or false,
@@ -803,11 +922,6 @@ local function currentLowest(link, itemID)
 		end
 		return value, "auctionator"
 	end
-	if ownFirst() then
-		local value, from = ownLowest()
-		if value then return value, from end
-		return auctLowest()
-	end
 	local value, from = auctLowest()
 	if value then return value, from end
 	return ownLowest()
@@ -816,11 +930,8 @@ end
 -- Which source provides Market Value and Trend right now: "tsm", "auctionator", "own", or nil.
 function Prices.TrendSource()
 	if wantsTSM() and TSM_API ~= nil and TSM_API.GetCustomPriceValue ~= nil then return "tsm" end
-	local hasAuct = hasAuctionatorHistory()
-	local hasOwn = ownScan() ~= nil and ns.PriceScan ~= nil and ns.PriceScan.HasHistory()
-	if hasOwn and (ownFirst() or not hasAuct) then return "own" end
-	if hasAuct then return "auctionator" end
-	if hasOwn then return "own" end
+	if hasAuctionatorHistory() then return "auctionator" end
+	if ownScan() ~= nil and ns.PriceScan ~= nil and ns.PriceScan.HasHistory() then return "own" end
 end
 
 -- Whether trend / market value can be shown: with TSM, Auctionator history, or Craftonomics' scan history.
@@ -918,13 +1029,15 @@ function Prices.ScanAgeText(age)
 	return Prices.AgeText(age)
 end
 
--- A material's price age (see auctionAge). Vendor prices don't age.
+-- A material's price age (see auctionAge), matching whichever source priced it.
 function Prices.MaterialAge(itemID)
-	if Prices.BuysAtVendor(itemID) then return end
-	-- Crafted (Craft myself, Cheapest way): its own price isn't used.
-	if ns.Chains.Crafted(itemID) then return end
-	if Prices.Scanner() == "own" then return ns.PriceScan.MaterialAge(itemID) end
-	return auctionAge("GetAuctionAgeByItemID", itemID)
+	local _, from = Prices.MaterialFrom(itemID)
+	if from == "own" then return ns.PriceScan and ns.PriceScan.MaterialAge and ns.PriceScan.MaterialAge(itemID) end
+	if from == "auctionator" then
+		local seen = auctionatorCheckedSeconds(itemID)
+		if seen then return math.floor(seen / 86400) end
+		return auctionAge("GetAuctionAgeByItemID", itemID)
+	end
 end
 
 -- A crafted item's price age (see auctionAge).

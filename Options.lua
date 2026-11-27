@@ -39,7 +39,7 @@ local STRATEGY_KEYS = {
 	patronMaterials = true, patronReach = true, concentrationFor = true,
 	countPatronBags = true, countProcs = true, ahCut = true, vendorFloor = true,
 	subtractExpectedDeposit = true, depositDuration = true, provider = true, matSource = true,
-	saleSource = true, vendorOnAH = true, chainCooldowns = true,
+	saleSource = true, vendorBuy = true, vendorOnAH = true, chainCooldowns = true,
 }
 
 -- Any change re-places and redraws the panel. Prices and the concentration
@@ -277,11 +277,12 @@ function Options.Create()
 		"the auction house, and when it's over 3 days old, a notice over the Best crafts list when you open it (once a " ..
 		"session). The panel's and the list's footers always say how old the scan is, in red once it's a day old.\n\n" ..
 		"With TSM prices saved by another character: the same reminders, to log in on a character with TSM.")
-	checkbox("vendorOnAH", "Buy vendor items on the auction house",
-		"Materials a vendor sells (thread, flux, vials...) are priced at their auction house price and go on the " ..
-		"shopping list.\n\nOff: they're priced at the vendor, and the shopping list says in chat to buy them there.\n\n" ..
-		"When the auction house asks more than a vendor, the tooltips of what's missing say so, and so does chat " ..
-		"when the shopping list gets it.\n\nAlso on the panel when a recipe is open.")
+	local vendorTip = "Where to price and buy materials a vendor sells (thread, flux, vials...):\n\n"
+	for _, choice in ipairs(ns.VENDOR_BUY_CHOICES) do
+		vendorTip = vendorTip .. choice[2] .. ": " .. choice[3] .. "\n\n"
+	end
+	dropdown("vendorBuy", "Buy vendor items", ns.VENDOR_BUY_CHOICES, vendorTip ..
+		"Also on the panel when a recipe is open.")
 	checkbox("ahCut", format("Subtract auction house cut (%d%%)", ns.AH_CUT * 100),
 		"The auction house keeps 5% of every sale.")
 	checkbox("vendorFloor", "Use vendor price as minimum sale price",
@@ -480,11 +481,11 @@ function Options.Create()
 			"Auctionator: no My auctions tab.")
 		dropdown("ahPrice", "Price with", ns.AH_CHOICES,
 			"Craftonomics: its window has the Prices tab, and with Scan when I open the auction house on, its price " ..
-			"scan starts by itself. It doesn't while your prices come from TSM.\n\n" ..
+			"scan starts by itself when Price addon uses it or is set to Freshest prices.\n\n" ..
 			"Auctionator: no Prices tab, and Craftonomics' scan doesn't start by itself. /craftonomics scan still " ..
 			"starts one.\n\n" ..
-			"It's also whose price is used when both have one. The other prices what the first doesn't.\n\n" ..
-			"TSM's prices still come before both. Price addon on the main page can limit prices to one addon.")
+			"Price addon on the Prices page is the master setting for which prices are used (Automatic always uses " ..
+			"TSM, then Auctionator, then Craftonomics' scan).")
 	end
 	header("Auction house window")
 	checkbox("auctionWindow", "Open at the auction house",
