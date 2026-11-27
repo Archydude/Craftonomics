@@ -56,7 +56,9 @@ local function login()
 	if not key then return end
 	myKey = key
 	local me = characters[myKey] or { professions = {} }
-	me.name, me.realm, me.class = name, realm, UnitClassBase("player")
+	local class = UnitClassBase and UnitClassBase("player")
+	if not class and UnitClass then class = select(2, UnitClass("player")) end
+	me.name, me.realm, me.class = name, realm, class or me.class
 	characters[myKey] = me
 	if CraftonomicsCharDB and CraftonomicsCharDB.professions then
 		for professionID, profession in pairs(CraftonomicsCharDB.professions) do
