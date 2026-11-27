@@ -7,6 +7,8 @@ local Shopping = {}
 ns.Shopping = Shopping
 
 local format = string.format
+local BANK_ICON = "|TInterface\\Minimap\\Tracking\\Banker:14|t"
+local VENDOR_ICON = "|TInterface\\GossipFrame\\VendorGossipIcon:14|t"
 
 -- Bind types that can be bought on the auction house.
 local TRADEABLE = {
@@ -238,6 +240,13 @@ local lastCount = {}
 local SETTLE_SECONDS = 5
 local settledAt = math.huge
 
+-- How many of an item are already ready to craft with: bags + bank on Retail,
+-- bags only on WoW Forever (so moving an item from bank into bags checks it off).
+local function countForCheckOff(itemID)
+	if ns.Model.CRAFTS_FROM_BANK then return ns.Model.Owned(itemID) end
+	return (ns.Model.InBags(itemID))
+end
+
 -- Remembers what was just added to a list ({ { itemID, name, tier } ... }).
 local function track(listName, items)
 	local tracked = ns.db.listItems[listName] or {}
@@ -245,7 +254,7 @@ local function track(listName, items)
 	for _, item in ipairs(items) do
 		tracked[item.itemID] = { name = item.name, tier = item.tier }
 		-- Counted fresh: an item that came off a list earlier isn't counted anymore.
-		lastCount[item.itemID] = ns.Model.Owned(item.itemID)
+		lastCount[item.itemID] = countForCheckOff(item.itemID)
 	end
 end
 
@@ -424,7 +433,7 @@ local function addToOwn(listName, items)
 	for _, item in ipairs(items) do
 		list[item.itemID] = (list[item.itemID] or 0) + item.qty
 		-- Counted fresh, so only what you get from now on is checked off.
-		lastCount[item.itemID] = ns.Model.Owned(item.itemID)
+		lastCount[item.itemID] = countForCheckOff(item.itemID)
 	end
 	ownChanged()
 end
@@ -564,7 +573,7 @@ local function checkOff(settling)
 	local lists, gained, anyGained = myLists(), {}, false
 	local function count(itemID)
 		if gained[itemID] ~= nil then return end
-		local now, before = ns.Model.Owned(itemID), lastCount[itemID]
+		local now, before = countForCheckOff(itemID), lastCount[itemID]
 		lastCount[itemID] = now
 		gained[itemID] = (not settling and before and now > before) and now - before or 0
 		anyGained = anyGained or gained[itemID] > 0
@@ -716,55 +725,81 @@ counter:SetScript("OnEvent", function(_, event, isInitialLogin, isReload)
 		C_Timer.After(SETTLE_SECONDS, function() checkOff(true) end)
 	end
 	checkOff()
+	if event == "BAG_UPDATE_DELAYED" and not ns.Model.CRAFTS_FROM_BANK and ns.ShoppingList and ns.ShoppingList.IsShown and ns.ShoppingList.IsShown() then
+		ns.ShoppingList.Refresh()
+	end
 end)
 
--- Sorts the missing materials into auction house, vendor and can't-buy once their
--- item info has loaded, then calls andThen(auction, vendor, bound), each a list of
--- { itemID, name, link, tier, qty }.
+-- Sorts the missing materials into auction house, vendor, can't-buy and bank
+-- once their item info has loaded, then calls andThen(auction, vendor, bound,
+-- bank), each a list of { itemID, name, link, tier, qty }.
 local function sortMissing(missing, andThen)
 	local container = ContinuableContainer:Create()
 	for _, material in ipairs(missing) do
 		container:AddContinuable(Item:CreateFromItemID(material.itemID))
 	end
 	container:ContinueOnLoad(function()
-		local auction, vendor, bound = {}, {}, {}
+		local auction, vendor, bound, bank = {}, {}, {}, {}
 		for _, material in ipairs(missing) do
 			local name, link, _, _, _, _, _, _, _, _, _, _, _, bindType = C_Item.GetItemInfo(material.itemID)
 			local tier = C_TradeSkillUI.GetItemReagentQualityByItemInfo(material.itemID)
-			local item = {
-				itemID = material.itemID, name = name, link = link or name, qty = material.qty,
-				tier = tier and tier > 0 and tier or nil,
-			}
-			if not name then
-				-- Never loaded; nothing to search for.
-			elseif ns.Prices.BuysAtVendor(material.itemID) then
-				vendor[#vendor + 1] = item
-			elseif bindType and not TRADEABLE[bindType] then
-				bound[#bound + 1] = item
-			else
-				auction[#auction + 1] = item
+			if name then
+				local inBank = (not ns.Model.CRAFTS_FROM_BANK) and select(2, ns.Model.InBags(material.itemID)) or 0
+				local bankQty = math.min(inBank, material.qty)
+				local buyQty = material.qty - bankQty
+				local tierVal = tier and tier > 0 and tier or nil
+				if bankQty > 0 then
+					bank[#bank + 1] = {
+						itemID = material.itemID, name = name, link = link or name, qty = bankQty, tier = tierVal,
+					}
+				end
+				if buyQty > 0 then
+					local item = {
+						itemID = material.itemID, name = name, link = link or name, qty = buyQty, tier = tierVal,
+					}
+					if ns.Prices.BuysAtVendor(material.itemID) then
+						vendor[#vendor + 1] = item
+					elseif bindType and not TRADEABLE[bindType] then
+						bound[#bound + 1] = item
+					else
+						auction[#auction + 1] = item
+					end
+				end
 			end
 		end
-		andThen(auction, vendor, bound)
+		andThen(auction, vendor, bound, bank)
 	end)
 end
 
--- One missing material in a tooltip, with a warning under it when it's bought on
--- the auction house but a vendor sells it for less ("Buy vendor items on the
--- auction house" on).
+-- One missing material in a tooltip, with bank / vendor tags and a warning
+-- under it when it's bought on the auction house but a vendor sells it for less.
 function Shopping.AddMissingLine(tip, itemID, qty)
-	tip:AddLine(ns.Format.Item(itemID, qty), 1, 1, 1)
-	local atVendor, onAH = ns.Prices.VendorCheaper(itemID)
-	if atVendor then
-		tip:AddLine(ns.Color("warning", format("   Cheaper at a vendor: %s (auction house %s)",
-			ns.Format.Money(atVendor), ns.Format.Money(onAH))))
+	local line = ns.Format.Item(itemID, qty)
+	local inBank = (not ns.Model.CRAFTS_FROM_BANK) and select(2, ns.Model.InBags(itemID)) or 0
+	local bankQty = math.min(inBank, qty)
+	local buyQty = qty - bankQty
+	local vendor = buyQty > 0 and ns.Prices.BuysAtVendor(itemID)
+	local tags = {}
+	if bankQty > 0 then
+		tags[#tags + 1] = buyQty > 0 and (BANK_ICON .. " " .. ns.Color("muted", format("(%d in bank)", bankQty))) or BANK_ICON
+	end
+	if vendor then tags[#tags + 1] = VENDOR_ICON end
+	if #tags > 0 then line = line .. "  " .. table.concat(tags, " ") end
+	tip:AddLine(line, 1, 1, 1)
+	if buyQty > 0 then
+		local atVendor, onAH = ns.Prices.VendorCheaper(itemID)
+		if atVendor then
+			tip:AddLine(ns.Color("warning", format("   Cheaper at a vendor: %s (auction house %s)",
+				ns.Format.Money(atVendor), ns.Format.Money(onAH))))
+		end
 	end
 end
 
 -- The materials no auction house search covers, listed in chat. With "Buy vendor
 -- items on the auction house" on, also the ones on the list that a vendor sells
 -- for less.
-local function sayUnbuyable(vendor, bound, auction)
+local function sayUnbuyable(vendor, bound, auction, bank)
+	if bank and #bank > 0 then say("Take from your bank: " .. itemList(bank) .. ".") end
 	if #vendor > 0 then say("Buy from a vendor: " .. itemList(vendor) .. ".") end
 	if #bound > 0 then say("Not on the auction house (soulbound): " .. itemList(bound) .. ".") end
 	local cheaper = {}
@@ -782,7 +817,7 @@ end
 -- `forText` says what they're for in chat: "5 crafts", "3 patron orders".
 -- `adds` says who asked for them (see hold).
 local function sendToAuctionator(api, missing, forText, listName, adds)
-	sortMissing(missing, function(auction, vendor, bound)
+	sortMissing(missing, function(auction, vendor, bound, bank)
 		if #auction > 0 then
 			if addToList(api, auction, listName) then
 				track(listName, auction)
@@ -793,20 +828,39 @@ local function sendToAuctionator(api, missing, forText, listName, adds)
 				say(ns.Color("warning", "Auctionator couldn't update the shopping list."))
 			end
 		end
-		sayUnbuyable(vendor, bound, auction)
+		sayUnbuyable(vendor, bound, auction, bank)
 	end)
 end
 
--- The same, to Craftonomics' own list.
+-- Combines items from auction, vendor and bank buckets by itemID in order.
+local function mergeListItems(...)
+	local merged, byID = {}, {}
+	for i = 1, select("#", ...) do
+		for _, item in ipairs(select(i, ...) or {}) do
+			local entry = byID[item.itemID]
+			if not entry then
+				entry = { itemID = item.itemID, link = item.link, qty = 0 }
+				byID[item.itemID] = entry
+				merged[#merged + 1] = entry
+			end
+			entry.qty = entry.qty + item.qty
+		end
+	end
+	return merged
+end
+
+-- Adds AH, vendor and bank materials to Craftonomics' own list, leaving only
+-- unowned soulbound items and cheaper-at-vendor notes for chat.
 local function sendToOwn(missing, forText, listName, adds)
-	sortMissing(missing, function(auction, vendor, bound)
-		if #auction > 0 then
-			addToOwn(listName, auction)
-			hold("own", listName, adds, auction)
-			say(format("Added to the \"%s\" shopping list, for %s: %s.", listName, forText, itemList(auction)))
+	sortMissing(missing, function(auction, vendor, bound, bank)
+		local toList = mergeListItems(auction, vendor, bank)
+		if #toList > 0 then
+			addToOwn(listName, toList)
+			hold("own", listName, adds, toList)
+			say(format("Added to the \"%s\" shopping list, for %s: %s.", listName, forText, itemList(toList)))
 			ns.ShoppingList.Added()
 		end
-		sayUnbuyable(vendor, bound, auction)
+		sayUnbuyable({}, bound, auction, {})
 	end)
 end
 
@@ -842,14 +896,14 @@ StaticPopupDialogs.CRAFTONOMICS_TSM_SEARCH = {
 -- material is its own item, so "i:<itemID>" buys exactly that rank, and "/x<qty>"
 -- stops at the amount needed; ";" puts several in one search.
 local function copyTSMSearch(missing, forText)
-	sortMissing(missing, function(auction, vendor, bound)
+	sortMissing(missing, function(auction, vendor, bound, bank)
 		if #auction > 0 then
 			local parts = {}
 			for _, item in ipairs(auction) do parts[#parts + 1] = format("i:%d/x%d", item.itemID, item.qty) end
 			say(format("TSM search for %s: %s.", forText, itemList(auction)))
 			StaticPopup_Show("CRAFTONOMICS_TSM_SEARCH", forText, nil, table.concat(parts, ";"))
 		end
-		sayUnbuyable(vendor, bound, auction)
+		sayUnbuyable(vendor, bound, auction, bank)
 	end)
 end
 

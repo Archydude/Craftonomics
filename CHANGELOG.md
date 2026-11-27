@@ -1,5 +1,10 @@
 # Changelog
 
+## 5.24.0
+- **Vendor & bank items on Craftonomics' shopping list:** vendor-priced items and (on WoW Forever) materials sitting in your bank are now added to Craftonomics' shopping list with clear icons and tags (`Vendor`, `In bank`, or `(N in bank)`). Clicking a bank-only item or a vendor item (when **Buy vendor items** prices it at a vendor) won't search the auction house, and moving a banked item into your bags checks it off automatically on WoW Forever.
+- **Auto-open & buy at vendors:** talking to a vendor that sells a vendor item on your shopping list automatically opens the list, highlights the items that vendor sells in green (`Buy here`), and lets you left-click them to buy the needed amount directly (and closes the list again when you leave if the vendor opened it).
+- **Refreshed Blizzard-style, resizable shopping list:** added dark bronze section headers with item counts, alternating row shading, and a footer summary. Away from the auction house, the shopping list window is resizable and remembers its size and position; at the auction house it stays locked to its docked size.
+
 ## 5.23.1
 - **Dismissible recipe list warning:** left-clicking the non-profit recipe list warning banner in the crafting panel now dismisses it for the current mode (until you switch modes or reload), while right-clicking switches the recipe list back to **Profit**.
 

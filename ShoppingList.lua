@@ -13,8 +13,16 @@ ns.ShoppingList = ShoppingList
 
 local format = string.format
 local Color = ns.Color
+local BANK_ICON = "|TInterface\\Minimap\\Tracking\\Banker:14|t"
+local VENDOR_ICON = "|TInterface\\GossipFrame\\VendorGossipIcon:14|t"
 
 local WIDTH, HEIGHT = 468, 558
+local STANDALONE_WIDTH, STANDALONE_HEIGHT = 400, 440
+local MIN_WIDTH, MIN_HEIGHT = 300, 220
+local MAX_WIDTH, MAX_HEIGHT = 700, 820
+local RESIZE_UP = "Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up"
+local RESIZE_HIGHLIGHT = "Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Highlight"
+local RESIZE_DOWN = "Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Down"
 -- The tabs, in order, and the window's title on each.
 local TAB_KEYS = { "shop", "sell", "auctions", "prices" }
 local TAB_LABELS = { shop = "Shopping list", sell = "Sell", auctions = "My auctions", prices = "Prices" }
@@ -24,10 +32,10 @@ local TAB_PADDING = 16   -- room beside a tab's label, so it's never cut short
 local TAB_GAP = 3        -- between two tabs, as the game's own
 local SIDE = 10          -- window edge to the list's frame
 local INSET_TOP = 26     -- under the title bar
-local INSET_BOTTOM = 32  -- room for the total
+local INSET_BOTTOM = 34  -- room for the footer
 local INSET_PAD = 4      -- list frame to the rows
 local SCROLLBAR_ROOM = 22
-local ROW_HEIGHT = 24
+local ROW_HEIGHT = 26
 local DOCK_GAP = 4       -- between the auction house (or its side buttons) and the window
 -- The side button on the auction house window: its icon (the addon's logo), where
 -- the first side button sits on the window's right edge (other addons put theirs
@@ -49,12 +57,13 @@ local NAME_RETRY, NAME_TRIES = 1, 60
 local EMPTY_TEXT = "Nothing on your shopping list.\n\nAdd what you're missing with the Shopping list button under "
 	.. "your materials, or from a row of the Best crafts list."
 
-local frame, scrollBox, empty, footer
+local frame, scrollBox, empty, footer, footerRight, grip
 -- The tab that's showing, and each tab's frame once it has been opened.
 local tab, panels = "shop", {}
--- Whether the auction house is open, whether it opened the window (so closing
--- it closes the window too), and whether the window sits beside it.
+-- Whether the auction house or a vendor is open, whether it opened the window
+-- (so closing it closes the window too), and whether the window sits beside the AH.
 local atAuctionHouse, openedByAuctionHouse, docked = false, false, false
+local atMerchant, openedByMerchant, merchantItems = false, false, {}
 -- The chat hint on how to open the window: once a session.
 local hinted = false
 -- The side button on the game's auction house window, once that window has
@@ -147,6 +156,60 @@ function ShoppingList.Explain()
 end
 
 ---------------------------------------------------------------------------
+-- Buying from an open vendor
+---------------------------------------------------------------------------
+
+local function scanMerchant()
+	wipe(merchantItems)
+	if not (atMerchant and GetMerchantNumItems) then return end
+	for index = 1, GetMerchantNumItems() do
+		local info = C_MerchantFrame and C_MerchantFrame.GetItemInfo and C_MerchantFrame.GetItemInfo(index)
+		local link = GetMerchantItemLink and GetMerchantItemLink(index)
+		local itemID = link and C_Item.GetItemInfoInstant and C_Item.GetItemInfoInstant(link)
+		if info and itemID and not info.hasExtendedCost and (info.price or 0) > 0 and info.numAvailable ~= 0 then
+			local stackCount = math.max(info.stackCount or 1, 1)
+			local itemMax = C_Item.GetItemInfo and select(8, C_Item.GetItemInfo(itemID))
+			local maxStack = math.max((type(itemMax) == "number" and itemMax) or stackCount, 1)
+			merchantItems[itemID] = {
+				index = index,
+				stackCount = stackCount,
+				maxStack = maxStack,
+				numAvailable = info.numAvailable,
+				price = info.price,
+			}
+		end
+	end
+end
+
+local function merchantHasVendorItem()
+	for _, list in ipairs(ns.Shopping.OwnLists()) do
+		for _, item in ipairs(list.items) do
+			local inBank = (not ns.Model.CRAFTS_FROM_BANK) and select(2, ns.Model.InBags(item.itemID)) or 0
+			local buyQty = item.qty - math.min(inBank, item.qty)
+			if buyQty > 0 and ns.Prices.BuysAtVendor(item.itemID) and merchantItems[item.itemID] then
+				return true
+			end
+		end
+	end
+	return false
+end
+
+local function buyFromMerchant(itemID, qty)
+	if not (atMerchant and BuyMerchantItem) then return end
+	local entry = merchantItems[itemID]
+	if not entry or qty <= 0 then return end
+	local remaining = qty
+	if entry.numAvailable and entry.numAvailable > 0 then
+		remaining = math.min(remaining, entry.numAvailable * entry.stackCount)
+	end
+	while remaining > 0 do
+		local chunk = math.min(remaining, entry.maxStack)
+		BuyMerchantItem(entry.index, chunk)
+		remaining = remaining - chunk
+	end
+end
+
+---------------------------------------------------------------------------
 -- Rows
 ---------------------------------------------------------------------------
 -- Two kinds share a row: a list's name with its Clear button, and a material
@@ -158,7 +221,30 @@ local function rowTooltip(row)
 	GameTooltip:SetOwner(row, "ANCHOR_RIGHT")
 	GameTooltip:SetItemByID(data.itemID)
 	GameTooltip:AddLine(" ")
-	GameTooltip:AddLine(Color("simulated", "Click: show it at the auction house"))
+	if data.buyQty == 0 then
+		GameTooltip:AddLine(BANK_ICON .. " " .. Color("simulated", format("In your bank (%d)", data.bankQty)))
+		GameTooltip:AddLine("Take it from your bank to craft.", 1, 1, 1, true)
+	elseif data.vendor then
+		if data.atThisVendor then
+			GameTooltip:AddLine(VENDOR_ICON .. " " .. Color("good", "Sold by this vendor"))
+			if data.bankQty > 0 then
+				GameTooltip:AddLine(BANK_ICON .. " " .. Color("simulated",
+					format("%d in your bank, %d to buy from this vendor", data.bankQty, data.buyQty)))
+			end
+			GameTooltip:AddLine(Color("simulated", format("Click: buy %d from this vendor", data.buyQty)))
+		elseif data.bankQty > 0 then
+			GameTooltip:AddLine(BANK_ICON .. " " .. Color("simulated",
+				format("%d in your bank, %d to buy from a vendor", data.bankQty, data.buyQty)))
+		else
+			GameTooltip:AddLine(VENDOR_ICON .. " " .. Color("simulated", "Buy from a vendor"))
+		end
+	else
+		if data.bankQty > 0 then
+			GameTooltip:AddLine(BANK_ICON .. " " .. Color("simulated",
+				format("%d in your bank, %d to buy on the auction house", data.bankQty, data.buyQty)))
+		end
+		GameTooltip:AddLine(Color("simulated", "Click: show it at the auction house"))
+	end
 	GameTooltip:AddLine(Color("simulated", "Right-click: take it off the list"))
 	GameTooltip:Show()
 end
@@ -173,16 +259,39 @@ local function rowClick(row, mouseButton)
 		-- Shift-click links it in chat, as on any item.
 		local _, link = C_Item.GetItemInfo(data.itemID)
 		if link then HandleModifiedItemClick(link) end
+	elseif data.buyQty == 0 then
+		return
+	elseif data.vendor then
+		if data.atThisVendor then buyFromMerchant(data.itemID, data.buyQty) end
 	else
-		search(data.itemID, data.qty)
+		search(data.itemID, data.buyQty)
 	end
 end
 
 local function createRow(row)
 	row:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+	row.headerBg = row:CreateTexture(nil, "BACKGROUND")
+	row.headerBg:SetAllPoints()
+	row.headerBg:SetColorTexture(0.16, 0.13, 0.08, 0.72)
+	row.headerRule = row:CreateTexture(nil, "ARTWORK")
+	row.headerRule:SetPoint("BOTTOMLEFT", 4, 0)
+	row.headerRule:SetPoint("BOTTOMRIGHT", -4, 0)
+	row.headerRule:SetHeight(1)
+	row.headerRule:SetColorTexture(0.66, 0.55, 0.32, 0.45)
+	row.stripe = row:CreateTexture(nil, "BACKGROUND")
+	row.stripe:SetAllPoints()
+	row.stripe:SetColorTexture(1, 1, 1, 0.035)
+	row.vendorBg = row:CreateTexture(nil, "BACKGROUND")
+	row.vendorBg:SetAllPoints()
+	row.vendorBg:SetColorTexture(0.15, 0.45, 0.18, 0.24)
+	row.vendorBar = row:CreateTexture(nil, "ARTWORK")
+	row.vendorBar:SetPoint("TOPLEFT", 2, -2)
+	row.vendorBar:SetPoint("BOTTOMLEFT", 2, 2)
+	row.vendorBar:SetWidth(3)
+	row.vendorBar:SetColorTexture(0.25, 0.85, 0.35, 0.85)
 	row.highlight = row:CreateTexture(nil, "HIGHLIGHT")
 	row.highlight:SetAllPoints()
-	row.highlight:SetColorTexture(1, 1, 1, 0.08)
+	row.highlight:SetColorTexture(1, 0.85, 0.35, 0.10)
 	row.text = row:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
 	row.text:SetJustifyH("LEFT")
 	row.text:SetWordWrap(false)
@@ -191,8 +300,8 @@ local function createRow(row)
 	row.amount:SetJustifyH("RIGHT")
 	row.clear = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
 	row.clear:SetText("Clear")
-	row.clear:SetSize(row.clear:GetFontString():GetUnboundedStringWidth() + 24, ROW_HEIGHT - 4)
-	row.clear:SetPoint("RIGHT", -2, 0)
+	row.clear:SetSize(row.clear:GetFontString():GetUnboundedStringWidth() + 24, ROW_HEIGHT - 6)
+	row.clear:SetPoint("RIGHT", -4, 0)
 	row.clear:SetScript("OnClick", function() ns.Shopping.ClearOwn(row.data.name) end)
 	row:SetScript("OnClick", rowClick)
 	row:SetScript("OnEnter", rowTooltip)
@@ -203,19 +312,46 @@ local function drawRow(row, data)
 	if not row.text then createRow(row) end
 	row.data = data
 	local header = data.header == true
+	local buyHere = not header and data.atThisVendor == true
 	row.clear:SetShown(header)
+	row.headerBg:SetShown(header)
+	row.headerRule:SetShown(header)
+	row.vendorBg:SetShown(buyHere)
+	row.vendorBar:SetShown(buyHere)
+	row.stripe:SetShown(not header and not buyHere and data.stripe == true)
 	row.highlight:SetShown(not header)
 	row.text:ClearAllPoints()
-	row.text:SetPoint("LEFT", 6, 0)
-	row.text:SetPoint("RIGHT", header and row.clear or row.amount, "LEFT", -6, 0)
+	row.text:SetPoint("LEFT", header and 8 or 10, 0)
+	row.text:SetPoint("RIGHT", header and row.clear or row.amount, "LEFT", -8, 0)
 	if header then
 		row.text:SetFontObject("GameFontNormal")
-		row.text:SetText(data.name)
+		row.text:SetText(data.name .. "  " .. Color("muted", format("(%d)", data.count or 0)))
 		row.amount:SetText("")
 	else
 		row.text:SetFontObject("GameFontHighlight")
-		row.text:SetText(ns.Format.Item(data.itemID, data.qty))
-		row.amount:SetText(data.cost and ns.Format.Money(data.cost) or Color("muted", "no price"))
+		local left = ns.Format.Item(data.itemID, data.qty)
+		local tags = {}
+		if data.bankQty > 0 then
+			tags[#tags + 1] = data.buyQty > 0 and (BANK_ICON .. " " .. Color("muted", format("(%d in bank)", data.bankQty))) or BANK_ICON
+		end
+		if data.vendor then
+			if data.atThisVendor then
+				tags[#tags + 1] = VENDOR_ICON .. " " .. Color("good", "Buy here")
+			elseif data.bankQty == 0 then
+				tags[#tags + 1] = VENDOR_ICON .. " " .. Color("muted", "Vendor")
+			else
+				tags[#tags + 1] = VENDOR_ICON
+			end
+		end
+		if #tags > 0 then left = left .. "  " .. table.concat(tags, " ") end
+		row.text:SetText(left)
+		if data.buyQty == 0 then
+			row.amount:SetText(Color("simulated", "In bank"))
+		elseif data.vendor then
+			row.amount:SetText(data.cost and ns.Format.Money(data.cost) or Color("muted", "vendor"))
+		else
+			row.amount:SetText(data.cost and ns.Format.Money(data.cost) or Color("muted", "no price"))
+		end
 	end
 	if GameTooltip:IsOwned(row) then
 		if header then GameTooltip:Hide() else rowTooltip(row) end
@@ -226,9 +362,51 @@ end
 -- The window
 ---------------------------------------------------------------------------
 
+local function clampSize(w, h)
+	w = math.max(MIN_WIDTH, math.min(MAX_WIDTH, math.floor((tonumber(w) or STANDALONE_WIDTH) + 0.5)))
+	h = math.max(MIN_HEIGHT, math.min(MAX_HEIGHT, math.floor((tonumber(h) or STANDALONE_HEIGHT) + 0.5)))
+	return w, h
+end
+
+local function saveLayout()
+	if not (frame and ns.db) or atAuctionHouse then return end
+	local w, h = clampSize(frame:GetWidth(), frame:GetHeight())
+	local point, _, relPoint, x, y = frame:GetPoint(1)
+	ns.db.shopWindow = {
+		w = w,
+		h = h,
+		point = type(point) == "string" and point or "CENTER",
+		rel = type(relPoint) == "string" and relPoint or "CENTER",
+		x = type(x) == "number" and x or 0,
+		y = type(y) == "number" and y or 0,
+	}
+end
+
+local function applyResizeMode()
+	if not frame then return end
+	if atAuctionHouse then
+		if frame.SetResizable then frame:SetResizable(false) end
+		if grip then grip:Hide() end
+		frame:SetSize(WIDTH, HEIGHT)
+		return
+	end
+	if frame.SetResizable then frame:SetResizable(true) end
+	if grip then grip:Show() end
+	local saved = ns.db and ns.db.shopWindow
+	local w, h = clampSize(saved and saved.w, saved and saved.h)
+	frame:SetSize(w, h)
+	if not docked then
+		frame:ClearAllPoints()
+		if saved and type(saved.point) == "string" and type(saved.x) == "number" and type(saved.y) == "number" then
+			frame:SetPoint(saved.point, UIParent, saved.rel or saved.point, saved.x, saved.y)
+		else
+			frame:SetPoint("CENTER")
+		end
+	end
+end
+
 -- Beside the auction house while it's open, past its side buttons, else in the
--- middle of the screen until you drag it. Only moved when that changes, so a
--- dragged window stays.
+-- middle of the screen (or saved standalone position) until you drag it.
 local function place()
 	local auctionHouse = atAuctionHouse and auctionFrame()
 	if auctionHouse and not docked then
@@ -238,9 +416,8 @@ local function place()
 		frame:SetPoint("TOPLEFT", auctionHouse, "TOPRIGHT", side + DOCK_GAP, 0)
 	elseif docked and not auctionHouse then
 		docked = false
-		frame:ClearAllPoints()
-		frame:SetPoint("CENTER")
 	end
+	applyResizeMode()
 end
 
 ---------------------------------------------------------------------------
@@ -396,15 +573,31 @@ end
 function ShoppingList.Refresh()
 	if not (frame and frame:IsShown()) or tab ~= "shop" then return end
 	local rows, total, unpriced = {}, 0, 0
+	local itemCount, vendorCount, bankCount = 0, 0, 0
 	unnamed = nil
 	for _, list in ipairs(ns.Shopping.OwnLists()) do
-		rows[#rows + 1] = { header = true, name = list.name }
-		for _, item in ipairs(list.items) do
+		rows[#rows + 1] = { header = true, name = list.name, count = #list.items }
+		for index, item in ipairs(list.items) do
 			if not ns.Format.ItemName(item.itemID) then unnamed = item.itemID end
-			local price = ns.Prices.Buy(item.itemID)
-			local cost = price and price * item.qty
-			if cost then total = total + cost else unpriced = unpriced + 1 end
-			rows[#rows + 1] = { listName = list.name, itemID = item.itemID, qty = item.qty, cost = cost }
+			local inBank = (not ns.Model.CRAFTS_FROM_BANK) and select(2, ns.Model.InBags(item.itemID)) or 0
+			local bankQty = math.min(inBank, item.qty)
+			local buyQty = item.qty - bankQty
+			local vendor = buyQty > 0 and ns.Prices.BuysAtVendor(item.itemID) or false
+			local atThisVendor = (atMerchant and vendor and merchantItems[item.itemID] ~= nil) or false
+			local cost = nil
+			itemCount = itemCount + 1
+			if bankQty > 0 then bankCount = bankCount + 1 end
+			if vendor then vendorCount = vendorCount + 1 end
+			if buyQty > 0 then
+				local price = ns.Prices.Buy(item.itemID)
+				cost = price and price * buyQty
+				if cost then total = total + cost else unpriced = unpriced + 1 end
+			end
+			rows[#rows + 1] = {
+				listName = list.name, itemID = item.itemID, qty = item.qty,
+				bankQty = bankQty, buyQty = buyQty, vendor = vendor, atThisVendor = atThisVendor,
+				cost = cost, stripe = index % 2 == 0,
+			}
 		end
 	end
 	scrollBox:SetDataProvider(CreateDataProvider(rows), ScrollBoxConstants.RetainScrollPosition)
@@ -413,8 +606,17 @@ function ShoppingList.Refresh()
 	if total > 0 then
 		text = "Total: " .. ns.Format.Money(total)
 		if unpriced > 0 then text = text .. Color("muted", format("  (%d with no price)", unpriced)) end
+	elseif itemCount > 0 and unpriced == 0 then
+		text = Color("simulated", "All in bank")
 	end
 	footer:SetText(text)
+	if footerRight then
+		local parts = {}
+		if itemCount > 0 then parts[#parts + 1] = format("%d item%s", itemCount, itemCount == 1 and "" or "s") end
+		if vendorCount > 0 then parts[#parts + 1] = format("%d vendor", vendorCount) end
+		if bankCount > 0 then parts[#parts + 1] = format("%d bank", bankCount) end
+		footerRight:SetText(#parts > 0 and Color("muted", table.concat(parts, "  ·  ")) or "")
+	end
 	-- A name is still loading: look again soon, whether or not the game says it arrived.
 	if not unnamed then
 		nameLooks = 0
@@ -498,6 +700,13 @@ local function create()
 	frame:SetFrameStrata("HIGH")
 	frame:SetToplevel(true)
 	frame:SetMovable(true)
+	if frame.SetResizable then frame:SetResizable(true) end
+	if frame.SetResizeBounds then
+		frame:SetResizeBounds(MIN_WIDTH, MIN_HEIGHT, MAX_WIDTH, MAX_HEIGHT)
+	else
+		if frame.SetMinResize then frame:SetMinResize(MIN_WIDTH, MIN_HEIGHT) end
+		if frame.SetMaxResize then frame:SetMaxResize(MAX_WIDTH, MAX_HEIGHT) end
+	end
 	frame:SetClampedToScreen(true)
 	frame:EnableMouse(true)
 	frame:RegisterForDrag("LeftButton")
@@ -505,7 +714,10 @@ local function create()
 		docked = false -- dragged away from the auction house: it stays where you put it
 		self:StartMoving()
 	end)
-	frame:SetScript("OnDragStop", frame.StopMovingOrSizing)
+	frame:SetScript("OnDragStop", function(self)
+		self:StopMovingOrSizing()
+		saveLayout()
+	end)
 	frame:Hide()
 	tinsert(UISpecialFrames, "CraftonomicsShoppingList")
 	frame.Inset:ClearAllPoints()
@@ -532,8 +744,36 @@ local function create()
 	empty:SetWidth(WIDTH - 80)
 	empty:SetText(EMPTY_TEXT)
 
+	local footerRule = shop:CreateTexture(nil, "ARTWORK")
+	footerRule:SetPoint("BOTTOMLEFT", SIDE, INSET_BOTTOM - 2)
+	footerRule:SetPoint("BOTTOMRIGHT", -SIDE, INSET_BOTTOM - 2)
+	footerRule:SetHeight(1)
+	footerRule:SetColorTexture(0.66, 0.55, 0.32, 0.35)
+
 	footer = shop:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
 	footer:SetPoint("BOTTOMLEFT", SIDE + 4, 10)
+
+	footerRight = shop:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+	footerRight:SetPoint("BOTTOMRIGHT", -24, 10)
+	footerRight:SetJustifyH("RIGHT")
+
+	grip = CreateFrame("Button", nil, frame)
+	grip:SetSize(16, 16)
+	grip:SetPoint("BOTTOMRIGHT", -3, 3)
+	grip:SetNormalTexture(RESIZE_UP)
+	grip:SetHighlightTexture(RESIZE_HIGHLIGHT)
+	grip:SetPushedTexture(RESIZE_DOWN)
+	grip:SetScript("OnMouseDown", function()
+		if not atAuctionHouse then frame:StartSizing("BOTTOMRIGHT") end
+	end)
+	grip:SetScript("OnMouseUp", function()
+		frame:StopMovingOrSizing()
+		saveLayout()
+	end)
+
+	frame:SetScript("OnSizeChanged", function(self)
+		if empty then empty:SetWidth(math.max(180, self:GetWidth() - 80)) end
+	end)
 
 	createTabs()
 
@@ -554,6 +794,7 @@ local function create()
 	frame:SetScript("OnHide", function(self)
 		self:UnregisterEvent("GET_ITEM_INFO_RECEIVED")
 		openedByAuctionHouse = false
+		openedByMerchant = false
 		nameLooks = 0
 		scrollBox:SetDataProvider(CreateDataProvider({}))
 		GameTooltip:Hide()
@@ -584,7 +825,10 @@ end
 -- An option changed: the tabs and the side button follow what Craftonomics does
 -- at the auction house now.
 function ShoppingList.OptionsChanged()
-	if not atAuctionHouse then return end
+	if not atAuctionHouse then
+		if frame and frame:IsShown() then ShoppingList.Refresh() end
+		return
+	end
 	placeSideTab()
 	if frame and frame:IsShown() then setTab(tab) end
 end
@@ -625,6 +869,9 @@ local events = CreateFrame("Frame")
 events:RegisterEvent("AUCTION_HOUSE_SHOW")
 events:RegisterEvent("AUCTION_HOUSE_CLOSED")
 events:RegisterEvent("ITEM_KEY_ITEM_INFO_RECEIVED")
+events:RegisterEvent("MERCHANT_SHOW")
+events:RegisterEvent("MERCHANT_UPDATE")
+events:RegisterEvent("MERCHANT_CLOSED")
 events:SetScript("OnEvent", function(_, event, itemID)
 	if event == "AUCTION_HOUSE_SHOW" then
 		atAuctionHouse = true
@@ -663,6 +910,30 @@ events:SetScript("OnEvent", function(_, event, itemID)
 				place()
 				setTab("shop")
 			end
+		end
+	elseif event == "MERCHANT_SHOW" then
+		atMerchant = true
+		scanMerchant()
+		C_Timer.After(0, function()
+			if not atMerchant then return end
+			scanMerchant()
+			if frame and frame:IsShown() then
+				ShoppingList.Refresh()
+			elseif not atAuctionHouse and ns.Shopping.ListTarget() == "own" and merchantHasVendorItem() then
+				openedByMerchant = true
+				ShoppingList.Show("shop")
+			end
+		end)
+	elseif event == "MERCHANT_UPDATE" then
+		if atMerchant then
+			scanMerchant()
+			if frame and frame:IsShown() then ShoppingList.Refresh() end
+		end
+	elseif event == "MERCHANT_CLOSED" then
+		atMerchant = false
+		wipe(merchantItems)
+		if frame and frame:IsShown() then
+			if openedByMerchant then frame:Hide() else ShoppingList.Refresh() end
 		end
 	elseif pending and pending.itemID == itemID then
 		local waiting = pending

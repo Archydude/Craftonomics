@@ -243,9 +243,16 @@ function Model.MissingForAll(jobs, stock)
 		end
 	end
 
-	-- Craft myself: what you can craft becomes its own materials.
-	if ns.Chains.Active() then return ns.Chains.Missing(needs, owned) end
+	local function inBagsOnly(id) return (Model.InBags(id)) end
+	local function inBankOnly(id) return select(2, Model.InBags(id)) end
 
+	-- Craft myself: what you can craft becomes its own materials.
+	if ns.Chains.Active() then
+		return Model.CRAFTS_FROM_BANK and ns.Chains.Missing(needs, owned)
+			or ns.Chains.Missing(needs, inBagsOnly, inBankOnly)
+	end
+
+	local available = Model.CRAFTS_FROM_BANK and owned or inBagsOnly
 	stock = stock or {}
 	local list, byItem = {}, {}
 	for _, need in ipairs(needs) do
@@ -253,7 +260,7 @@ function Model.MissingForAll(jobs, stock)
 		for _, itemID in ipairs(need.counts) do
 			if short <= 0 then break end
 			local left = stock[itemID]
-			if left == nil then left = owned(itemID) end
+			if left == nil then left = available(itemID) end
 			local used = math.min(left, short)
 			stock[itemID] = left - used
 			short = short - used

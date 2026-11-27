@@ -132,9 +132,11 @@ end
 -- What to buy for `needs` ({ counts = itemIDs that fill it, itemID = the one to
 -- buy, qty } ...), crafting what you can: { { itemID, qty } ... }. What you own
 -- counts once, at every step down; a crafted material you're short of becomes
--- enough crafts of it for what's missing.
-function Chains.Missing(needs, owned)
-	local used, list, byID = {}, {}, {}
+-- enough crafts of it for what's missing. When `bankCount` is given (WoW Forever,
+-- where crafting only pulls from bags), banked stock is added as-is without
+-- recursing into its recipe.
+function Chains.Missing(needs, owned, bankCount)
+	local used, bankUsed, list, byID = {}, {}, {}, {}
 	local function buy(itemID, qty)
 		local entry = byID[itemID]
 		if not entry then
@@ -151,6 +153,17 @@ function Chains.Missing(needs, owned)
 			qty = qty - take
 		end
 		if qty <= 0 then return end
+		if bankCount then
+			for _, id in ipairs(counts) do
+				local takeBank = math.min(math.max(bankCount(id) - (bankUsed[id] or 0), 0), qty)
+				if takeBank > 0 then
+					bankUsed[id] = (bankUsed[id] or 0) + takeBank
+					buy(id, takeBank)
+					qty = qty - takeBank
+				end
+				if qty <= 0 then return end
+			end
+		end
 		local recipe = depth < MAX_DEPTH and Chains.Crafted(itemID)
 		if not recipe then return buy(itemID, qty) end
 		local crafts = math.ceil(qty / recipe.madeAtLeast)

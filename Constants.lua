@@ -414,7 +414,7 @@ ns.METRICS_SOURCE_CHOICES = {
 -- Where to price and buy materials a vendor sells: key, label, and tooltip.
 ns.VENDOR_BUY_CHOICES = {
 	{ "vendor", "Buy from Vendor", "Materials a vendor sells (thread, flux, vials...) are priced at the vendor, " ..
-		"and the shopping list says in chat to buy them there." },
+		"marked as vendor items on Craftonomics' shopping list (without searching the auction house), and noted in chat for external lists." },
 	{ "ah", "Buy from AH", "Materials a vendor sells are priced at their auction house price and go on the " ..
 		"shopping list (falling back to the vendor when none are listed). Warns when a vendor is cheaper." },
 	{ "cheapest", "Cheapest", "Uses whichever is cheaper for each vendor material: buys on the auction house when " ..
