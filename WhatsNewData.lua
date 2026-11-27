@@ -2,10 +2,13 @@
 ArchdudeWhatsNew:Register("Craftonomics", {
 	title = "Craftonomics",
 	icon = "Interface\\Icons\\INV_Hammer_20",
-	version = "5.23.0",
+	version = "5.23.1",
 	seen = "CraftonomicsWhatsNew",
 	saved = { "CraftonomicsDB", "CraftonomicsCharDB" },
 	changes = {
+		{ "5.23.1",
+			"|cffffd100Dismissible recipe list warning:|r left-clicking the non-profit recipe list warning banner in the crafting panel now dismisses it for the current mode (until you switch modes or reload), while right-clicking switches the recipe list back to |cffffd100Profit|r.",
+		},
 		{ "5.23.0",
 			"|cffffd100Market metrics source (|cffffd100TSM|r / |cffffd100Craftonomics|r):|r added a |cffffd100Market metrics|r dropdown on the |cffffd100Prices|r options page (defaults to |cffffd100TSM|r) to choose whether sale rate, sold per day, market value, historical price, and trend come from |cffffd100TSM|r (falling back to Craftonomics when TSM has no data) or always from |cffffd100Craftonomics'|r own scans and sales history — independent of |cffffd100Price addon|r.",
 			"|cffffd100Clearer non-profit recipe list modes & panel warning:|r |cffffd100Crafting cost|r, |cffffd100Net skill-up cost|r, and |cffffd100Raw skill-up cost|r in the profession recipe list now display in light blue (with a minus sign on costs) so they stand apart from green/red profit and loss. While the list isn't in |cffffd100Profit|r mode, the crafting panel shows a warning banner with an icon — click it to switch the list back to |cffffd100Profit|r.",
@@ -44,9 +47,6 @@ ArchdudeWhatsNew:Register("Craftonomics", {
 			"|cffffd100Price addon controls metrics & Freshest prices:|r |cffffd100Price addon|r now controls which addon supplies |cffffd100Market Value|r, |cffffd100Trend|r, |cffffd100Lowest vs Market|r, |cffffd100Sale Rate|r, |cffffd100Sold per Day|r, and the |cffffd100Heatmap|r, even when TSM is loaded. Picking |cffffd100Freshest prices|r automatically sets both TSM price types to |cffffd100Lowest auction right now|r so live scans and TSM match cleanly.",
 			"|cffffd100Craft vs AH on item tooltips:|r shows your crafting profit (after the 5% auction house cut when enabled) as a share of craft cost — |cffffd100Craft +27%|r in green when crafting profits, |cffffd100Buy -21%|r in light blue when crafting loses gold, or |cffffd100Even|r within 3%. Turn it off with |cffffd100Show craft vs AH|r on the Tooltips options page.",
 			"|cffffd100Expected AH deposit (optional):|r new |cffffd100Show expected AH deposit|r options on the Tooltips and Panel pages (off by default) estimate the auction house deposits lost across relistings based on TSM's or your personal sale rate (once you have 3+ finished auctions), since the final sale refunds its deposit.",
-		},
-		{ "5.17.0",
-			"|cffffd100Craft cost on item tooltips:|r hovering any craftable item now shows |cffffd100Craft Cost|r, what the materials to craft one of it cost, right under the auction house price so you can compare crafting against buying at a glance — even on characters without that profession (such as gatherers). It follows your |cffffd100Crafting strategy|r (|cffffd100Buy missing|r, |cffffd100Craft myself|r or |cffffd100Cheapest way|r on WoW Forever; |cffffd100Highest rank|r, |cffffd100Use what I own|r or |cffffd100Cheapest materials|r on Retail) and your |cffffd100Price addon|r (TSM, Auctionator or Craftonomics' scan). Hold |cffffd100Shift|r over a stack in your bags to see the craft cost for the whole stack. Turn it off with |cffffd100Show craft cost|r on the Tooltips options page.",
 		},
 	},
 })

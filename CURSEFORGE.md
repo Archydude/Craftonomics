@@ -69,18 +69,21 @@ This addon was made with AI.
 ## B. Upload File form
 
 **Files:** two, each uploaded with only its own game versions (why is in [UPLOADING.md](../UPLOADING.md)). The display name, release type and changelog are the same for both.
-- `dist\Craftonomics-5.23.0-retail.zip`: Retail `12.1.5`
-- `dist\Craftonomics-5.23.0-forever.zip`: WoW Forever `1.60.1`
+- `dist\Craftonomics-5.23.1-retail.zip`: Retail `12.1.5`
+- `dist\Craftonomics-5.23.1-forever.zip`: WoW Forever `1.60.1`
 
 **Display name**
 ```
-Craftonomics 5.23.0
+Craftonomics 5.23.1
 ```
 
 **Release type:** `Release`
 
 **Changelog** (paste only the newest part; paste older parts too if they never went up)
 ```markdown
+5.23.1
+- **Dismissible recipe list warning:** left-clicking the non-profit recipe list warning banner in the crafting panel now dismisses it for the current mode (until you switch modes or reload), while right-clicking switches the recipe list back to **Profit**.
+
 5.23.0
 - **Market metrics source (`TSM` / `Craftonomics`):** added a **Market metrics** dropdown on the **Prices** options page (defaults to **TSM**) to choose whether sale rate, sold per day, market value, historical price, and trend come from **TSM** (falling back to Craftonomics when TSM has no data) or always from **Craftonomics'** own scans and sales history — independent of **Price addon**.
 - **Clearer non-profit recipe list modes & panel warning:** **Crafting cost**, **Net skill-up cost**, and **Raw skill-up cost** in the profession recipe list now display in light blue (with a minus sign on costs) so they stand apart from green/red profit and loss. While the list isn't in **Profit** mode, the crafting panel shows a warning banner with an icon — click it to switch the list back to **Profit**.

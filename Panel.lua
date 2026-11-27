@@ -1685,25 +1685,38 @@ local function saleProceedsTooltip(output)
 end
 
 local WARNING_ICON = format("|TInterface\\DialogFrame\\UI-Dialog-Icon-AlertNew:%d:%d:0:-1|t ", Layout.ICON_SIZE - 2, Layout.ICON_SIZE - 2)
+local dismissedListMetric = nil
 
 -- Reminds the player when the profession window's recipe list isn't showing
--- profits (e.g. Crafting cost or skill-up cost), with a one-click reset.
+-- profits (e.g. Crafting cost or skill-up cost), with click to dismiss and
+-- right-click to switch back to Profit.
 local function drawListMetricWarning()
 	if not (ns.RecipeProfit and ns.RecipeProfit.ActiveMetric) then return end
 	local m, info = ns.RecipeProfit.ActiveMetric()
-	if not (m and m ~= "profit" and info) then return end
+	if not (m and m ~= "profit" and info) then
+		dismissedListMetric = nil
+		return
+	end
+	if dismissedListMetric == m then return end
 	addGap()
-	addRow(WARNING_ICON .. Color("warning", format("Recipe list shows %s (not profit)", info.label)), nil, nil, function()
-		if ns.RecipeProfit and ns.RecipeProfit.SetMetric then
-			ns.RecipeProfit.SetMetric("profit")
+	addRow(WARNING_ICON .. Color("warning", format("Recipe list shows %s (not profit)", info.label)), nil, nil, function(mouseButton)
+		if mouseButton == "RightButton" then
+			if ns.RecipeProfit and ns.RecipeProfit.SetMetric then
+				ns.RecipeProfit.SetMetric("profit")
+			else
+				ns.Options.Set("listMetric", "profit")
+			end
 		else
-			ns.Options.Set("listMetric", "profit")
+			dismissedListMetric = m
+			if GameTooltip then GameTooltip:Hide() end
+			Panel.Refresh()
 		end
 	end, function(tip)
 		tip:SetText(info.label)
 		tip:AddLine("The recipe list on the left is showing " .. info.label:lower() .. " instead of profit.", 1, 1, 1, true)
 		tip:AddLine(" ")
-		tip:AddLine(Color("simulated", "Click: switch recipe list back to Profit"))
+		tip:AddLine(Color("simulated", "Click: dismiss for now"))
+		tip:AddLine(Color("simulated", "Right-click: switch recipe list back to Profit"))
 	end)
 end
 
